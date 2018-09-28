@@ -4,7 +4,7 @@
         Dim osync As New sync
         osync.SyncVacc()
 
-        Dim x As Int16 = 1
+        Dim x As Int16 = 2
 
     End Sub
 
