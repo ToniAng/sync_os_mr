@@ -22,6 +22,9 @@ Public Class sync
 
     Private PARAM_LAST_VACC_SYNC As String = "LastVaccSyncOS"
 
+
+
+
     Private Enum DS_Typ
         Impfung = 0
         Impfling = 1
@@ -119,7 +122,34 @@ Public Class sync
 
 
     End Function
+    Private Sub SendAdminmail(ByVal Msg As String, ByVal Subject As String)
 
+
+        Console.WriteLine(Msg)
+
+        Dim x As New System.Net.Mail.SmtpClient
+        'x.Credentials = System.Net.CredentialCache.DefaultNetworkCredentials
+
+
+
+        Dim basicAuthenticationInfo As New System.Net.NetworkCredential("administrator", "huekuvlof")
+        'Put your own, or your ISPs, mail server name onthis next line
+        x.UseDefaultCredentials = False
+        x.Credentials = basicAuthenticationInfo
+
+
+        x.Host = Setting.SMTP_SERVER
+
+
+
+
+
+        x.Send("sync_os-mr@vorsorgemedizin.st",
+               "office@atsoftware.at",
+               Subject,
+               Msg)
+
+    End Sub
 
     Public Sub SyncVacc()
 
@@ -188,7 +218,7 @@ Public Class sync
 
             Next
             If osv.Vacc.Count > 0 Then
-                AktionsLog(osv.Vacc.Count & " Impfungen wurden integriert.", AktionslogKat.Integration_BH_Impfungen, trans)
+                AktionsLog(osv.Vacc.Count & " Impfeinträge wurden synchronisiert.", AktionslogKat.Integration_BH_Impfungen, trans)
             End If
 
             trans.Commit()
@@ -198,8 +228,8 @@ Public Class sync
             Catch ex2 As Exception
 
             End Try
-            log(ex.Message & " - " & ex.StackTrace)
-
+            'AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
+            LogErr(ex)
         Finally
 
         End Try
@@ -257,7 +287,8 @@ Public Class sync
         Catch ex As Exception
             Try
 
-                AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
+                'AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
+                LogErr(ex)
             Catch ex2 As Exception
 
             End Try
@@ -284,7 +315,7 @@ Public Class sync
     'End Function
     Private Function savevacc(vacc As Idata, pat As OSImpfling, trans As SqlClient.SqlTransaction) As String
         Dim db_con As New cls_db_con
-
+        Dim strSQL As String
         Dim Charge = "NULL"
         If Not String.IsNullOrEmpty(vacc.charge) Then Charge = "'" & vacc.charge & "'"
 
@@ -346,7 +377,9 @@ Public Class sync
             Dim s As String() = vacc.plid.Split("|")
 
             If vacc.del <> 0 Then
-                db_con.FireSQL("delete ghdaten..impfdoku where datum='" & s(0) & "' and boncode=" & s(1), trans)
+                strSQL = "delete ghdaten..impfdoku where datum='" & s(0) & "' and boncode=" & s(1)
+                db_con.FireSQL(strSQL, trans)
+                AktionsLog("Impfung wurde gelöscht: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
             Else
                 db_con.FireSQL("update ghdaten..impfdoku set " &
                     "datum='" & CDate(vacc.datum).ToShortDateString & "'," &
@@ -1285,7 +1318,8 @@ Public Class sync
             Return responseString
 
         Catch ex As Exception
-            AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
+            'AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
+            LogErr(ex)
             If Not WebResponse Is Nothing Then WebResponse.Close()
 
         End Try
@@ -1294,11 +1328,18 @@ Public Class sync
 
     End Function
 
+
+    Private Sub LogErr(ex As Exception)
+        AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
+        SendAdminmail("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, "Fehler beim Synchronisieren")
+    End Sub
+
+
     Public Sub AktionsLog(ByVal aktion As String, ByVal VProgramm As AktionslogKat, Optional trans As SqlClient.SqlTransaction = Nothing)
         Try
             Dim db_con As New cls_db_con
             db_con.FireSQL("aktionslogreg @aktion='" & GetSQLText(aktion) & "', @VProgramm=" & GetSQLText(VProgramm) & ", @CurUsr='System'")
-
+            Console.WriteLine(aktion)
         Catch ex As Exception
         Finally
         End Try
@@ -1365,12 +1406,12 @@ Public Class sync
             Else
                 If responseFromServer.ToLower <> "false" Then
                     If responseFromServer.ToLower = "true" Then
-                        log("Parameter " & CType(Param, ConfigParam).ToString & " konnte nicht gesetzt werden.")
+                        'log("Parameter " & CType(Param, ConfigParam).ToString & " konnte nicht gesetzt werden.")
 
                         AktionsLog("Fehler: Parameter " & CType(Param, ConfigParam).ToString & " konnte nicht gesetzt werden.", AktionslogKat.Integration_BH_Impfungen)
 
                     Else
-                        log(responseFromServer)
+                        'log(responseFromServer)
                         AktionsLog(responseFromServer, AktionslogKat.Integration_BH_Impfungen)
 
                     End If
@@ -1388,7 +1429,8 @@ Public Class sync
         Catch ex As Exception
 
             If Not response Is Nothing Then response.Close()
-            AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
+            'AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
+            LogErr(ex)
             Return True
         End Try
 
@@ -1397,15 +1439,15 @@ Public Class sync
 
     End Function
 
-    Private Sub log(txt)
-        Dim db_con As New cls_db_con
-        If String.IsNullOrEmpty(txt) Then Return
+    'Private Sub log(txt)
+    '    Dim db_con As New cls_db_con
+    '    If String.IsNullOrEmpty(txt) Then Return
 
-        If txt.Length > 3000 Then txt = txt.Substring(0, 3000)
+    '    If txt.Length > 3000 Then txt = txt.Substring(0, 3000)
 
 
-        db_con.FireSQL("insert into wf_log (log_ma,log_datum,log_txt) values ('Syncdienst OS-MR','" & Date.Now & "','" & txt.Replace("'", "''") & "')")
-    End Sub
+    '    db_con.FireSQL("insert into wf_log (log_ma,log_datum,log_txt) values ('Syncdienst OS-MR','" & Date.Now & "','" & txt.Replace("'", "''") & "')")
+    'End Sub
     Private ReadOnly Property URL_Online_Service() As String
         Get
 
