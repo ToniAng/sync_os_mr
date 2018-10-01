@@ -381,7 +381,7 @@ Public Class sync
                 db_con.FireSQL(strSQL, trans)
                 AktionsLog("Impfung wurde gelöscht: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
             Else
-                db_con.FireSQL("update ghdaten..impfdoku set " &
+                strSQL = "update ghdaten..impfdoku set " &
                     "datum='" & CDate(vacc.datum).ToShortDateString & "'," &
                     "nname='" & pat.nn & "'," &
                     "vname='" & pat.vn & "'," &
@@ -402,7 +402,14 @@ Public Class sync
                     "bhnr=" & vacc.bhnr & "," &
                     "standort=" & standort & "," &
                     "standortid=" & standortid & " " &
-                    "where datum='" & s(0) & "' and boncode=" & s(1), trans)
+                    "where datum='" & s(0) & "' and boncode=" & s(1)
+
+                db_con.FireSQL(strSQL, trans)
+
+
+                AktionsLog("Impfung wurde verändert: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
+
+
             End If
 
 
