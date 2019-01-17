@@ -2,7 +2,7 @@
 Public Class cls_db_con
     Private Const STANDBSTRING As String = "User Id=GHDaten_LesenSchreiben; password=nww3vz..ke8h!qvdwknyqeh:hfkj??ew-abfc;Connect Timeout=120;Initial Catalog=ghdaten;Data Source=."
     Private con As SqlClient.SqlConnection
-
+    Public LastErrSQL As String = ""
 
     Public Sub New()
         con = New SqlClient.SqlConnection
@@ -103,9 +103,10 @@ Public Class cls_db_con
             Return ret
 
         Catch ex As Exception
+            LastErrSQL = SQL
             'Log("SQL-Fehler: " & SQL)
             'Log(ex.Message & Chr(13) & ex.StackTrace)
-            Throw New Exception(ex.Message)
+            Throw New Exception(ex.Message & vbNewLine & "SQL: " & SQL)
         Finally
 
 
@@ -165,7 +166,7 @@ Public Class cls_db_con
                 'Log(ex.Message & " SQL: " & SQL)
 
                 'Log(ex.Message & Chr(13) & ex.StackTrace)
-
+                LastErrSQL = SQL
                 Throw New Exception(ex.Message)
 
             End Try
@@ -178,6 +179,8 @@ Public Class cls_db_con
             Return tb
 
         Catch ex As Exception
+            LastErrSQL = SQL
+
             'Log(ex.Message & " SQL: " & SQL)
             'Log(ex.Message & Chr(13) & ex.StackTrace)
             Throw New Exception(ex.Message)

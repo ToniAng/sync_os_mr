@@ -132,20 +132,20 @@ Public Class sync
 
 
 
-        Dim basicAuthenticationInfo As New System.Net.NetworkCredential("administrator", "huekuvlof")
+        'Dim basicAuthenticationInfo As New System.Net.NetworkCredential("administrator", "huekuvlof")
         'Put your own, or your ISPs, mail server name onthis next line
-        x.UseDefaultCredentials = False
-        x.Credentials = basicAuthenticationInfo
+        'x.UseDefaultCredentials = False
+        'x.Credentials = basicAuthenticationInfo
 
 
-        x.Host = Setting.SMTP_SERVER
+        x.Host = Setting.SMTP_SERVER_ALTERNATIV
 
 
 
 
 
         x.Send("sync_os-mr@vorsorgemedizin.st",
-               "office@atsoftware.at",
+                Setting.EMail,
                Subject,
                Msg)
 
@@ -209,9 +209,6 @@ Public Class sync
 
 
             For Each vacc As Idata In osv.Vacc
-                'Nein - Wir müssen zuert die Pat-Daten abarbeiten - 
-
-
 
                 curPat = GetCurPat(vacc, trans)
                 AddSynclog(DS_Typ.Impfung, vacc.dsid, , trans, savevacc(vacc, curPat, trans))
@@ -229,7 +226,7 @@ Public Class sync
 
             End Try
             'AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
-            LogErr(ex)
+            LogErr(ex, db_con.LastErrSQL)
         Finally
 
         End Try
@@ -252,12 +249,12 @@ Public Class sync
     'End Function
 
     Private Function SyncLog() As Boolean
+        Dim db_con As New cls_db_con
         Try
 
 
-            Dim db_con As New cls_db_con
-            Dim pers As DataTable = db_con.GetRecordset("select * from os_synclog where os_commit=0 and os_dstyp=" & CInt(DS_Typ.Impfling))
-            Dim vacc As DataTable = db_con.GetRecordset("select * from os_synclog where os_commit=0 and os_dstyp=" & CInt(DS_Typ.Impfung))
+            Dim pers As DataTable = db_con.GetRecordSet("select * from os_synclog where os_commit=0 and os_dstyp=" & CInt(DS_Typ.Impfling))
+            Dim vacc As DataTable = db_con.GetRecordSet("select * from os_synclog where os_commit=0 and os_dstyp=" & CInt(DS_Typ.Impfung))
             pers.TableName = "pers"
             vacc.TableName = "vacc"
 
@@ -288,7 +285,7 @@ Public Class sync
             Try
 
                 'AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
-                LogErr(ex)
+                LogErr(ex, db_con.lasterrsql)
             Catch ex2 As Exception
 
             End Try
@@ -402,7 +399,7 @@ Public Class sync
                     "bhnr=" & vacc.bhnr & "," &
                     "standort=" & standort & "," &
                     "standortid=" & standortid & " " &
-                    "where datum='" & s(0) & "' and boncode=" & s(1)
+                    "where datum='" & s(0) & "' and boncode=" & bc
 
                 db_con.FireSQL(strSQL, trans)
 
@@ -734,6 +731,8 @@ Public Class sync
         If hasSVN Then
             svnrdata = "'" & pat.svn.Substring(0, 4) & "'"
             gebdat = "'" & pat.svn.Substring(4, 6) & "'"
+        Else
+            svnrdata = "'" & GetGBShort(pat.gebdat) & "'"
         End If
 
         Dim SQLRefpers As String = ""
@@ -750,6 +749,7 @@ Public Class sync
                        "vorname='" & pat.vn & "'," &
                        "anrede=" & IIf(pat.sex = "w", -1, 0) & "," &
                        "gebdat='" & pat.gebdat & "'," &
+                       "gbjahr=" & CDate(pat.gebdat).Year & "," &
                        "strasse='" & pat.strasse & " " & pat.hnr & "'," &
                        "plz=" & pat.plz & "," &
                        "ort='" & pat.ort & "'," &
@@ -1006,12 +1006,14 @@ Public Class sync
 
         If hasSVN Then
             svnrdata = "'" & pat.svn.Substring(0, 4) & "'"
-                gebdat = "'" & pat.svn.Substring(4, 6) & "'"
+            gebdat = "'" & pat.svn.Substring(4, 6) & "'"
+        Else
+            gebdat = "'" & GetGBShort(pat.gebdat) & "'"
         End If
 
 
 
-        Dim sql As String = "insert into frauen (heftnrf,anrede,nachname,vorname,gebdat,strasse,plz,ort,svnrdata," &
+        Dim sql As String = "insert into frauen (heftnrf,anrede,nachname,vorname,gebdat,gbjahr,strasse,plz,ort,svnrdata," &
                         "gbdatum,sva,kreiertam,geandertam,AlterAddress,kreiert,geandert, " &
                         "nneltern,vneltern,titeleltern,titel_suffix_eltern," &
                         "breitengrad,laengengrad," &
@@ -1021,6 +1023,7 @@ Public Class sync
                        " '" & pat.nn & "'," &
                        "'" & pat.vn & "'," &
                        "'" & pat.gebdat & "'," &
+                       CDate(pat.gebdat).Year & "," &
                        "'" & pat.strasse & " " & pat.hnr & "'," &
                        pat.plz & "," &
                        "'" & pat.ort & "'," &
@@ -1037,6 +1040,9 @@ Public Class sync
                        GetFldVal(pat.refpers_titel) & "," &
                        GetFldVal(pat.refpers_ngtitel) & "," &
                        ic.InsertSQLMitGKZ & ")"
+
+
+
 
         db_con.FireSQL(sql, trans)
 
@@ -1056,7 +1062,12 @@ Public Class sync
 
     End Function
 
+    Public Function GetGBShort(Gebdat As DateTime) As String
+        Return Gebdat.Day.ToString.PadLeft(2, "0") &
+            Gebdat.Month.ToString.PadLeft(2, "0") &
+            Gebdat.Year.ToString.Substring(2, 2)
 
+    End Function
     'Private Function InsertEltern(pat As OSImpfling, Optional trans As SqlClient.SqlTransaction = Nothing) As Integer
 
     '    Dim db_con As New cls_db_con
@@ -1326,7 +1337,7 @@ Public Class sync
 
         Catch ex As Exception
             'AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
-            LogErr(ex)
+            LogErr(ex, "")
             If Not WebResponse Is Nothing Then WebResponse.Close()
 
         End Try
@@ -1336,9 +1347,9 @@ Public Class sync
     End Function
 
 
-    Private Sub LogErr(ex As Exception)
+    Private Sub LogErr(ex As Exception, LastErrSQL As String)
         AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
-        SendAdminmail("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, "Fehler beim Synchronisieren")
+        SendAdminmail("Fehler: " & ex.Message & vbNewLine & ex.StackTrace & vbNewLine & vbNewLine & LastErrSQL, "Fehler beim Synchronisieren")
     End Sub
 
 
@@ -1437,7 +1448,7 @@ Public Class sync
 
             If Not response Is Nothing Then response.Close()
             'AktionsLog("Fehler: " & ex.Message & vbNewLine & ex.StackTrace, AktionslogKat.Integration_BH_Impfungen)
-            LogErr(ex)
+            LogErr(ex, "")
             Return True
         End Try
 
