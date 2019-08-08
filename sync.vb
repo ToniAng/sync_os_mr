@@ -107,13 +107,15 @@ Public Class sync
         Dim bc As String = IIf(boncode = "", "NULL", boncode)
         db_con.FireSQL("insert into os_synclog (os_dsid,os_dsid_tmp, os_dstyp, os_boncode) values (" & dsid & "," & tmp & "," & CInt(dstyp) & "," & bc & ")", trans)
 
+        Console.WriteLine("Log mit DSID " & dsid & " und dsid_tmp " & dsid_tmp & " hinzugefügt.")
+
 
     End Sub
 
     Private Function GetPersistentID(tmp_dsid As Integer, dstyp As DS_Typ, Optional trans As SqlClient.SqlTransaction = Nothing) As Integer
 
         Dim db_con As New cls_db_con
-        Dim tb As DataTable = db_con.GetRecordSet("select os_dsid from os_synclog where os_dsid_tmp=" & tmp_dsid & " and os_dstyp=" & CInt(DS_Typ.Impfling), trans)
+        Dim tb As DataTable = db_con.GetRecordSet("Select os_dsid from os_synclog where os_dsid_tmp=" & tmp_dsid & " And os_dstyp=" & CInt(DS_Typ.Impfling), trans)
         If tb.Rows.Count > 0 Then
             Return tb.Rows(0)("os_dsid")
         Else
@@ -169,7 +171,7 @@ Public Class sync
         Try
             Dim s As String = GetRemoteParam(URL_Online_Service & "/ConfigEx/GetOSVaccData")
 
-            If s = "false" Then
+            If s = "False" Then
                 AktionsLog("Daten für den Abgleich der Impfungen konnten nicht abgerufen werden.", AktionslogKat.Integration_BH_Impfungen)
                 Return
             ElseIf s = "" Then
@@ -183,26 +185,56 @@ Public Class sync
 
 
 
-            trans = con.BeginTransaction
+            trans = con.BeginTransaction()
 
 
+            Dim curaa As amtsarzt_voll
+            For Each curaa In osv.aa
 
+                Dim aa As New ghdb_amtsarzt
+                aa.Add(curaa)
+
+
+            Next
 
 
 
 
             Dim curPat As OSImpfling
+            Dim remote_heftnr As Integer = 0
+
             For Each curPat In osv.pers
+                remote_heftnr = curPat.heftnr
                 curPat.heftnr_os = curPat.heftnr
                 If curPat.heftnr < 0 Then
                     curPat.heftnr = GetPersistentID(curPat.heftnr, DS_Typ.Impfling, trans)
                 End If
                 If curPat.heftnr < 0 Then
 
+                Else
+
+
+                    curPat.KindUpdateMöglich = KindUpdateMöglich(curPat, trans)
+
+                End If
+                curPat.heftnr = remote_heftnr
+            Next
+
+            For Each curPat In osv.pers
+                remote_heftnr = 0
+                curPat.heftnr_os = curPat.heftnr
+
+                If curPat.heftnr < 0 Then
+                    remote_heftnr = curPat.heftnr
+                    curPat.heftnr = GetPersistentID(curPat.heftnr, DS_Typ.Impfling, trans)
+                End If
+                Console.WriteLine("curPat.heftnr=" & curPat.heftnr & ", remote_heftnr=" & remote_heftnr)
+                If curPat.heftnr < 0 Then
+
                     AddSynclog(DS_Typ.Impfling, SetPatData(curPat, trans), curPat.heftnr_os, trans)
                 Else
                     SetPatData(curPat, trans)
-                    AddSynclog(DS_Typ.Impfling, curPat.heftnr,, trans)
+                    AddSynclog(DS_Typ.Impfling, curPat.heftnr, remote_heftnr, trans)
                 End If
             Next
 
@@ -219,6 +251,9 @@ Public Class sync
             End If
 
             trans.Commit()
+
+            Console.WriteLine("Synchronisierung beendet.")
+
         Catch ex As Exception
             Try
                 trans.Rollback()
@@ -273,12 +308,14 @@ Public Class sync
                 Try
 
                     AktionsLog("Fehler beim Loggen der bereits integrierten Impfdaten im Online-Service.", AktionslogKat.Integration_BH_Impfungen)
+                    Console.WriteLine("Fehler beim Loggen der bereits integrierten Impfdaten im Online-Service.")
                 Catch ex As Exception
 
                 End Try
                 Return True
             End If
             db_con.FireSQL("update os_synclog set os_commit=1 where os_commit=0")
+            Console.WriteLine("Remote Logrecords auf os_commit=1 gesetzt.")
             SetLastSynTime()
 
         Catch ex As Exception
@@ -475,7 +512,7 @@ Public Class sync
         Dim NewHeftnr As Integer
         Dim tb As DataTable
 
-        If KindUpdateMöglich(pat) Then
+        If pat.KindUpdateMöglich Then
             UpdateKI(pat, trans)
             Return pat.heftnr
         End If
@@ -732,7 +769,7 @@ Public Class sync
             svnrdata = "'" & pat.svn.Substring(0, 4) & "'"
             gebdat = "'" & pat.svn.Substring(4, 6) & "'"
         Else
-            svnrdata = "'" & GetGBShort(pat.gebdat) & "'"
+            gebdat = "'" & GetGBShort(pat.gebdat) & "'"
         End If
 
         Dim SQLRefpers As String = ""
@@ -955,8 +992,10 @@ Public Class sync
 
 
             'Existiert heftNr schon als TN?
-
+            Console.WriteLine("KindUpdateMöglich: Select heftnrf from frauen where heftnrf=" & pat.heftnr_os)
             tb = db_con.GetRecordSet("Select heftnrf from frauen where heftnrf=" & pat.heftnr_os, trans)
+
+
             If tb.Rows.Count > 0 Then Return False
 
 
@@ -966,6 +1005,8 @@ Public Class sync
 
             'Exisitiert Kind-DS?
             'Wir können aus einem Kind-DS nicht den Erwachsenen ableiten!
+
+            Console.WriteLine("KindUpdateMöglich: Select heftnr from eeinh where heftnr=" & pat.heftnr_os)
             tb = db_con.GetRecordSet("Select heftnr from eeinh where heftnr=" & pat.heftnr_os, trans)
             If tb.Rows.Count = 0 Then
                 Return False
@@ -1018,7 +1059,7 @@ Public Class sync
                         "nneltern,vneltern,titeleltern,titel_suffix_eltern," &
                         "breitengrad,laengengrad," &
                         "GeocodeLevel,gemeindeid) values ( " &
-                       IIf(heftnr = NO_VAL, 0, heftnr) & "," &
+                       IIf(heftnr = NO_VAL, "NULL", heftnr) & "," &
                        IIf(pat.sex = "w", -1, 0) & "," &
                        " '" & pat.nn & "'," &
                        "'" & pat.vn & "'," &
@@ -1506,6 +1547,7 @@ End Class
 
 
 Public Class OSVaccData
+    Public aa As List(Of amtsarzt_voll)
     Public Vacc As List(Of Idata)
     Public pers As List(Of OSImpfling)
 End Class
@@ -1614,6 +1656,8 @@ Public Class OSImpfling
     Public Property refpers_vnr2 As String
     Public Property refpers_gebdat As String
 
+
+    Public Property KindUpdateMöglich As Boolean = False
 End Class
 
 Public Class Idata
@@ -1752,4 +1796,270 @@ gg_err:
         Return l
 
     End Function
+End Class
+
+
+
+
+Public Class amtsarzt_voll
+
+    Private m_NN As String
+    Private m_VN As String
+    Private m_Titel As String
+    Private m_Strasse As String
+    Private m_PLZ As Integer
+    Private m_Ort As String
+    Private m_Email As String
+    Private m_BH As String
+    Private m_BHNR As Integer
+    Private m_GID As String
+    Private m_Tel As String
+
+
+    Public Arztnr As Integer
+
+    Public Sub New(strNN As String, strVN As String, strTitel As String, strStrasse As String, iPLZ As Integer, strOrt As String, strEmail As String, strBH As String, iBHNR As Integer, strGID As String, strTel As String, iArztnr As Integer)
+
+
+        NN = strNN
+        VN = strVN
+        Titel = strTitel
+        Strasse = strStrasse
+        PLZ = iPLZ
+        Ort = strOrt
+        eMail = strEmail
+        BH = strBH
+        BHNR = iBHNR
+        GID = strGID
+        Tel = strTel
+
+        Arztnr = iArztnr
+
+    End Sub
+
+
+    Public Property NN As String
+        Get
+            Return m_NN.Replace("'", "''")
+        End Get
+        Set(value As String)
+            m_NN = value
+        End Set
+    End Property
+
+
+    Public Property VN As String
+        Get
+            Return m_VN.Replace("'", "''")
+
+        End Get
+        Set(value As String)
+            m_VN = value
+        End Set
+    End Property
+
+
+    Public Property Titel As String
+        Get
+            Return m_Titel.Replace("'", "''")
+
+        End Get
+        Set(value As String)
+            m_Titel = value
+        End Set
+    End Property
+
+    Public Property Strasse As String
+        Get
+            Return m_Strasse.Replace("'", "''")
+
+        End Get
+        Set(value As String)
+            m_Strasse = value
+        End Set
+    End Property
+
+
+    Public Property PLZ As Integer
+        Get
+            Return m_PLZ
+
+        End Get
+        Set(value As Integer)
+            m_PLZ = value
+        End Set
+    End Property
+
+    Public Property Ort As String
+        Get
+            Return m_Ort.Replace("'", "''")
+
+        End Get
+        Set(value As String)
+            m_Ort = value
+        End Set
+    End Property
+
+
+    Public Property eMail As String
+        Get
+            Return m_Email.Replace("'", "''")
+
+        End Get
+        Set(value As String)
+            m_Email = value
+        End Set
+    End Property
+
+
+    Public Property BH As String
+        Get
+            Return m_BH.Replace("'", "''")
+
+        End Get
+        Set(value As String)
+            m_BH = value
+        End Set
+    End Property
+
+
+    Public Property BHNR As Integer
+        Get
+            Return m_BHNR
+
+        End Get
+        Set(value As Integer)
+            m_BHNR = value
+        End Set
+    End Property
+
+    Public Property GID As String
+        Get
+            Return m_GID.Replace("'", "''")
+
+        End Get
+        Set(value As String)
+            m_GID = value
+        End Set
+    End Property
+
+    Public Property Tel As String
+        Get
+            Return m_Tel.Replace("'", "''")
+
+        End Get
+        Set(value As String)
+            m_Tel = value
+        End Set
+    End Property
+End Class
+
+Public Class ghdb_amtsarzt
+
+    Private Const HERR As String = "Herrn"
+    Private Const FRAU As String = "Frau"
+
+
+
+    Public Function Add(aa As amtsarzt_voll) As Integer
+
+
+
+        Dim db_con As New cls_db_con
+
+        Dim con As SqlClient.SqlConnection = db_con.GetCon
+        Dim trans As SqlClient.SqlTransaction = Nothing
+
+        'Dim arztnr As Integer
+
+        Try
+
+            con.Open()
+            trans = con.BeginTransaction
+
+
+            'Dim tb As DataTable = db_con.GetRecordset("select max(arztnr)+1 from aerzteliste where arztnr between 8000000 and 8999999",,, trans)
+            'arztnr = tb.Rows(0)(0)
+
+            Dim strSQL = "insert into ghdaten..AERZTELISTE (arztnr, gruppe, [name], grdtit, anrede, nname, vname, [Str], plz, ort, email, BH, bhnr, TEILNIMPF, PVP_GID,tel) values(" &
+            aa.Arztnr & "," &
+            "'Amtsarzt'," &
+            "'" & aa.NN & '," & 
+            "'" & aa.Titel & "'," &
+            "'" & GetAnrede(aa.VN, trans) & "'," &
+            "'" & aa.NN & "'," &
+            "'" & aa.VN & "'," &
+            "'" & aa.Strasse & "'," &
+            aa.PLZ & "," &
+            "'" & aa.Ort & "'," &
+            "'" & aa.eMail & "'," &
+            "'" & aa.BH & "'," &
+            aa.BHNR & "," &
+            "1," &
+            "'" & aa.GID & "'" &
+            "'" & aa.Tel & "')"
+
+
+            db_con.FireSQL(strSQL, trans)
+
+            db_con.FireSQL("insert into iaa(arztnr) values (" & aa.Arztnr & ")", trans)
+
+
+            trans.Commit()
+        Catch ex As Exception
+            trans.Rollback()
+
+            Throw New Exception(ex.Message)
+
+
+        Finally
+            Try
+                con.Close()
+                con.Dispose()
+            Catch ex2 As Exception
+
+            End Try
+
+        End Try
+
+
+        Return aa.Arztnr
+
+
+
+
+
+    End Function
+
+
+
+    Public Shared Function GetAnrede(ByVal VN As String, Optional trans As SqlClient.SqlTransaction = Nothing) As String
+        Dim db_con As New cls_db_con
+
+        If String.IsNullOrEmpty(VN) Then Return ""
+
+        Dim tb As DataTable = db_con.GetRecordSet("select sex from gemeinden..vornamendb where vname='" & VN & "'", trans)
+        If tb.Rows.Count = 0 Then
+            Return FRAU
+        Else
+            If tb.Rows(0)(0) = "0" Then
+                Return HERR
+            Else
+                Return FRAU
+            End If
+
+        End If
+    End Function
+
+
+    Public Function NeuArztnr() As Integer
+        Dim db_con As New cls_db_con
+        Dim tb As DataTable = db_con.GetRecordSet("select max(arztnr)+1 from aerzteliste where arztnr between 8000000 and 8999999")
+        Return tb.Rows(0)(0)
+
+
+    End Function
+
+
+
 End Class
