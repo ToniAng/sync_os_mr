@@ -24,6 +24,7 @@ Public Class sync
     Private Const TAB_PERS As String = "pers"
     Private Const TAB_VACC As String = "vacc"
     Private Const TAB_AA As String = "aa"
+    Private Const TAB_AIS As String = "ais"
 
 
 
@@ -36,6 +37,7 @@ Public Class sync
         Impfung = 0
         Impfling = 1
         Amtsarzt = 2
+        AIS_Data_log = 3
     End Enum
 
 
@@ -258,6 +260,20 @@ Public Class sync
                 AktionsLog(osv.Vacc.Count & " Impfeinträge wurden synchronisiert.", AktionslogKat.Integration_BH_Impfungen, trans)
             End If
 
+
+
+            If osv.ais IsNot Nothing Then
+                For Each ais In osv.ais
+
+                    sync_ais(ais, osv.mobile_vorwahlen, trans)
+
+                    AddSynclog(DS_Typ.AIS_Data_log, ais.id,, trans)
+                Next
+
+
+            End If
+
+
             trans.Commit()
 
             Console.WriteLine("Synchronisierung beendet.")
@@ -291,26 +307,149 @@ Public Class sync
     '    Return ret
     'End Function
 
+
+    Private Function sync_ais(dl As ais_data_log, mobile_vorwahlen As String, trans As SqlClient.SqlTransaction) As Boolean
+
+        Dim js As New JavaScriptSerializer()
+        Dim db_con As New cls_db_con
+
+
+
+        Dim au As AIS_Update = js.Deserialize(Of AIS_Update)(dl.json)
+        Dim sql As String
+        Dim from_eltern As String = "from eeinh where frauen.svnr_id=eeinh.svnr_id and eeinh.heftnr="
+        Dim from_impfling As String = "where heftnrf="
+
+        Dim sql_from As String
+
+        Select Case au.Typ
+            Case AIS_Update.UpdateTyp.EmailEltern, AIS_Update.UpdateTyp.TelEltern
+                sql_from = from_eltern & au.heftnr
+            Case AIS_Update.UpdateTyp.EmailImpfling, AIS_Update.UpdateTyp.TelImpfling
+                sql_from = from_impfling & au.heftnr
+            Case Else
+                Throw New Exception("ais_data_log mit nicht behandeltem Datenfeld")
+        End Select
+
+
+        Dim am As String
+        Dim strlog As String
+
+
+        Select Case au.Typ
+            Case AIS_Update.UpdateTyp.EmailEltern, AIS_Update.UpdateTyp.EmailImpfling
+                strlog = Date.Today & " Email durch Arzt " & dl.arztnr & "/Ärzteinfoservice aktualisiert"
+                am = ", aktenvermerke=(case when aktenvermerke IS null then " & strlog & " else aktenvermerke+ CHAR(13)+CHAR(10)+CHAR(13)+CHAR(10)+" & strlog & " end)  "
+                sql = "update frauen set email='" & au.text & "' " & am & sql_from
+            Case AIS_Update.UpdateTyp.TelEltern, AIS_Update.UpdateTyp.TelImpfling
+
+                Dim fld As String = GetTelField(au.text, mobile_vorwahlen)
+
+                strlog = Date.Today & " " & fld & " Ärzteinfoservice durch Arzt " & dl.arztnr & "/Ärzteinfoservice aktualisiert"
+
+                am = "set aktenvermerke=(case when aktenvermerke IS null then " & strlog & " else aktenvermerke+ CHAR(13)+CHAR(10)+CHAR(13)+CHAR(10)+" & strlog & " end)  "
+
+                sql = "update frauen Set " & fld & "='" & au.text & "' " & am & sql_from
+            Case Else
+                Throw New Exception("ais_data_log mit nicht behandeltem Datenfeld (2)")
+
+        End Select
+
+
+        db_con.FireSQL(sql, trans)
+
+        Return True
+
+    End Function
+
+    Private Function GetTelField(TelNr As String, mobile_vorwahlen As String) As String
+
+        If IsMobileNumber(GetMSISDNFormat(TelNr), mobile_vorwahlen) Then
+            Return "Mobiltel"
+        Else
+            Return "Telefon"
+        End If
+
+    End Function
+
+
+    Public Function IsMobileNumber(TelNr_MSISDNFormat As String, mobile_vorwahlen As String) As Boolean
+
+        Dim vw_mobil As List(Of String) = mobile_vorwahlen.Split(",").ToList
+
+        Dim vw As String
+        Dim pos As Integer = 0
+
+        Dim tmp As String = TelNr_MSISDNFormat.Substring(2)
+
+
+
+
+        If tmp.StartsWith("0") Then
+            pos = 1
+            If tmp.Length < 4 Then Return False
+
+        Else
+            If tmp.Length < 3 Then Return False
+
+        End If
+        vw = tmp.Substring(pos, 3)
+
+        If vw_mobil.Contains(vw) Then
+            Return True
+        Else
+            Return False
+        End If
+
+    End Function
+    Public Function GetMSISDNFormat(TelNr As String) As String
+        'Zuerst alle Zeichen außer Ziffern entfernen
+        Dim sb As New StringBuilder
+
+
+        For i = 0 To TelNr.Length - 1
+            If IsNumeric(TelNr.Substring(i, 1)) Then sb.Append(TelNr.Substring(i, 1))
+        Next
+
+
+        Dim tmp As String = sb.ToString
+        If tmp.StartsWith("0043") Then Return tmp.Substring(2)
+        If tmp.StartsWith("043") Then Return tmp.Substring(1)
+        If tmp.StartsWith("0") Then
+            Return "43" & tmp.Substring(1)
+        Else
+            If tmp.StartsWith("43") Then
+                Return tmp
+            Else
+                Return tmp & "43" & tmp
+            End If
+        End If
+
+
+    End Function
     Private Function SyncLog() As Boolean
         Dim db_con As New cls_db_con
         Try
 
 
-            Dim pers As DataTable = db_con.GetRecordSet("select * from os_synclog where os_commit=0 and os_dstyp=" & CInt(DS_Typ.Impfling))
-            Dim vacc As DataTable = db_con.GetRecordSet("select * from os_synclog where os_commit=0 and os_dstyp=" & CInt(DS_Typ.Impfung))
-            Dim aa As DataTable = db_con.GetRecordSet("select * from os_synclog where os_commit=0 and os_dstyp=" & CInt(DS_Typ.Amtsarzt))
+            Dim pers As DataTable = db_con.GetRecordSet("Select * from os_synclog where os_commit=0 And os_dstyp=" & CInt(DS_Typ.Impfling))
+            Dim vacc As DataTable = db_con.GetRecordSet("Select * from os_synclog where os_commit=0 And os_dstyp=" & CInt(DS_Typ.Impfung))
+            Dim aa As DataTable = db_con.GetRecordSet("Select * from os_synclog where os_commit=0 And os_dstyp=" & CInt(DS_Typ.Amtsarzt))
+            Dim ais As DataTable = db_con.GetRecordSet("Select * from os_synclog where os_commit=0 And os_dstyp=" & CInt(DS_Typ.AIS_Data_log))
             pers.TableName = TAB_PERS
             vacc.TableName = TAB_VACC
             aa.TableName = TAB_AA
+            ais.TableName = TAB_AIS
 
-            If pers.Rows.Count = 0 And vacc.Rows.Count = 0 And aa.Rows.Count = 0 Then Return False
+
+            If pers.Rows.Count = 0 And vacc.Rows.Count = 0 And aa.Rows.Count = 0 And ais.Rows.Count = 0 Then Return False
 
 
             Dim ds As New DataSet
             ds.Tables.Add(pers)
             ds.Tables.Add(vacc)
             ds.Tables.Add(aa)
-
+            ds.Tables.Add(ais)
 
 
             Dim ret As Boolean = SetRemoteParam(URL_Online_Service & "/configex/SetParam", ConfigParam.SyncVaccData, ToBase64(ds.GetXml), False)
@@ -324,7 +463,7 @@ Public Class sync
                 End Try
                 Return True
             End If
-            db_con.FireSQL("update os_synclog set os_commit=1 where os_commit=0")
+            db_con.FireSQL("update os_synclog Set os_commit=1 where os_commit=0")
             Console.WriteLine("Remote Logrecords auf os_commit=1 gesetzt.")
             SetLastSynTime()
 
@@ -1038,19 +1177,40 @@ Public Class sync
         Dim tb As DataTable
         Dim hasSVN As Boolean = IIf(String.IsNullOrEmpty(pat.svn), False, True)
 
+        Console.WriteLine("heftnr=" & heftnr)
+
         If Not hasSVN And heftnr > 0 Then
             'Kind mit SVN?
+            Console.WriteLine("1")
 
             tb = db_con.GetRecordSet("Select SVNRKIND, k_gbdatum from eeinh where heftnr=" & heftnr, trans)
             If tb.Rows.Count > 0 Then
-                If Not IsDBNull(tb.Rows(0)("SVNRKIND") And Not IsDBNull(tb.Rows(0)("k_gbdatum"))) Then
+
+                Console.WriteLine("1a")
+
+                If Not IsDBNull(tb.Rows(0)("SVNRKIND")) And Not IsDBNull(tb.Rows(0)("k_gbdatum")) Then
+                    Console.WriteLine("1b")
+
+
                     pat.svn = tb.Rows(0)("SVNRKIND") & tb.Rows(0)("k_gbdatum")
+                    Console.WriteLine("1c")
+
+
                     hasSVN = True
                 End If
             End If
+            Console.WriteLine("2")
+
         End If
 
+        Console.WriteLine("3")
+
+
         Dim ic As New ImportGeocodierung(pat.strasse & " " & pat.hnr, pat.plz, pat.ort)
+
+
+        Console.WriteLine("4")
+
 
         Dim svnrdata As String = "NULL"
         Dim gebdat As String = "NULL"
@@ -1062,6 +1222,7 @@ Public Class sync
             gebdat = "'" & GetGBShort(pat.gebdat) & "'"
         End If
 
+        Console.WriteLine("5")
 
 
         Dim sql As String = "insert into frauen (heftnrf,anrede,nachname,vorname,gebdat,gbjahr,strasse,plz,ort,svnrdata," &
@@ -1093,21 +1254,31 @@ Public Class sync
                        ic.InsertSQLMitGKZ & ")"
 
 
+        Console.WriteLine("6")
 
 
         db_con.FireSQL(sql, trans)
 
+        Console.WriteLine("7")
+
+
         AktionsLog("Neuer Impfling: " & sql, AktionslogKat.Integration_BH_Impfungen, trans)
+
+        Console.WriteLine("8")
 
 
         If heftnr = NO_VAL Then
+            Console.WriteLine("8a")
 
 
             heftnr = InsertHeftnr(pat,, trans)
 
+            Console.WriteLine("8b")
+
 
         End If
 
+        Console.WriteLine("9")
 
         Return heftnr
 
@@ -1560,6 +1731,8 @@ Public Class OSVaccData
     Public aa As List(Of amtsarzt_voll)
     Public Vacc As List(Of Idata)
     Public pers As List(Of OSImpfling)
+    Public ais As List(Of ais_data_log)
+    Public mobile_vorwahlen As String
 End Class
 Public Class OSImpfling
     Private m_hnr As String
@@ -1696,6 +1869,51 @@ Public Class Idata
 End Class
 
 
+Public Class ais_data_log
+    Public Property id As Integer
+    Public Property arztnr As Integer
+    Public Property json As String
+    Public Property datum As Date
+    Public Property inplattform As Short
+
+End Class
+
+Public Class AIS_Update
+
+    Public Enum UpdateTyp
+
+        Adresse = 1
+        NameEltern = 2
+        NameImpfling = 3
+        TelEltern = 4
+        TelImpfling = 5
+        EmailEltern = 6
+        EmailImpfling = 7
+        SVNEltern = 8
+        SVNImpfling = 9
+    End Enum
+
+    Public Property Typ As UpdateTyp
+
+
+    Public Property text As String
+
+
+    Public Property Strasse As String
+
+    Public Property PLZ As String
+    Public Property Ort As String
+
+
+    Public Property Titel_Prä As String
+    Public Property Titel_Suf As String
+    Public Property Vorname As String
+    Public Property Nachname As String
+
+
+    Public Property heftnr As Integer
+
+End Class
 
 Public Class ImportGeocodierung
     Public Const NO_STADTBEZIRK As String = "99"
