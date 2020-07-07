@@ -317,21 +317,21 @@ Public Class sync
 
         Dim au As AIS_Update = js.Deserialize(Of AIS_Update)(dl.json)
         Dim sql As String
-        Dim from_eltern As String = "from eeinh, frauen where frauen.svnr_id=eeinh.svnr_id and eeinh.heftnr="
-        Dim from_impfling As String = "where heftnrf="
+        Dim from_auseeinh As String = "from eeinh, frauen where frauen.svnr_id=eeinh.svnr_id and eeinh.heftnr="
+        Dim from_ausfrauen As String = "where heftnrf="
 
-        Dim sql_from As String
-        rtretret
-        Select Case au.Typ
-            Case AIS_Update.UpdateTyp.EmailEltern, AIS_Update.UpdateTyp.TelEltern, AIS_Update.UpdateTyp.SVNImpfling
-                sql_from = from_eltern & au.heftnr
-            Case AIS_Update.UpdateTyp.EmailImpfling, AIS_Update.UpdateTyp.TelImpfling
-                sql_from = from_impfling & au.heftnr
+        'Dim sql_from As String
+
+        'Select Case au.Typ
+        '    Case AIS_Update.UpdateTyp.EmailEltern, AIS_Update.UpdateTyp.TelEltern, AIS_Update.UpdateTyp.SVNImpfling
+        '        sql_from = from_auseeinh & au.heftnr
+        '    Case AIS_Update.UpdateTyp.EmailImpfling, AIS_Update.UpdateTyp.TelImpfling
+        '        sql_from = from_ausfrauen & au.heftnr
 
 
-            Case Else
-                Throw New Exception("ais_data_log mit nicht behandeltem Datenfeld")
-        End Select
+        '    Case Else
+        '        Throw New Exception("ais_data_log mit nicht behandeltem Datenfeld")
+        'End Select
 
 
         Dim strlog As String
@@ -339,8 +339,24 @@ Public Class sync
 
         Select Case au.Typ
             Case AIS_Update.UpdateTyp.EmailEltern, AIS_Update.UpdateTyp.EmailImpfling
-                strlog = "'" & Date.Today & " Email durch Arzt " & arzt & "/Ärzteinfoservice aktualisiert' "
-                sql = "update frauen set email='" & au.text & "' " & GetAktenvermerk(strlog) & sql_from
+
+
+
+
+                strlog = "'" & Date.Today & " Email (Heft " & au.heftnr & ") durch Arzt " & arzt & "/Ärzteinfoservice aktualisiert' "
+
+
+
+                sql = "update  frauen set email='" & au.text & "' " & GetAktenvermerk(strlog)
+
+                If au.Typ = AIS_Update.UpdateTyp.EmailEltern Then
+                    sql = sql & from_auseeinh & au.heftnr
+                Else
+                    sql = sql & from_ausfrauen & au.heftnr
+                End If
+
+
+
             Case AIS_Update.UpdateTyp.TelEltern, AIS_Update.UpdateTyp.TelImpfling
 
                 Dim fld As String = GetTelField(au.text, mobile_vorwahlen)
@@ -348,25 +364,44 @@ Public Class sync
                 strlog = "'" & Date.Today & " " & fld & " Telefon durch Arzt " & arzt & "/Ärzteinfoservice aktualisiert' "
 
 
-                sql = "update frauen Set " & fld & "='" & au.text & "' " & GetAktenvermerk(strlog) & sql_from
+                sql = "update frauen Set " & fld & "='" & au.text & "' " & GetAktenvermerk(strlog)
+
+                If au.Typ = AIS_Update.UpdateTyp.TelEltern Then
+                    sql = sql & from_auseeinh & au.heftnr
+                Else
+                    sql = sql & from_ausfrauen & au.heftnr
+
+                End If
+
+
+
+
+
+
             Case AIS_Update.UpdateTyp.SVNImpfling
                 strlog = "'" & Date.Today & " SVN Impfling (Heft " & au.heftnr & ") durch Arzt " & arzt & "/Ärzteinfoservice aktualisiert' "
 
-                sql = "update eeinh Set SVNRKIND='" & au.text.Substring(0, 4) & "', k_gbdatum='" & au.text.Substring(4) & " where heftnr=" & au.heftnr
-                AISUpdateEeinh(sql, sql_from, strlog, db_con, trans)
 
+                Dim strupdate_frauen As String = "update frauen Set SVNRDATA='" & au.text.Substring(0, 4) & "', GBDATUM='" & au.text.Substring(4) & " " & GetAktenvermerk(strlog)
+                Dim strupdate_eeinh As String = "update eeinh Set SVNRKIND='" & au.text.Substring(0, 4) & "', k_gbdatum='" & au.text.Substring(4) & " " & GetAktenvermerk(strlog)
 
-                sql = "update frauen Set SVNRDATA='" & au.text.Substring(0, 4) & "', GBDATUM='" & au.text.Substring(4) & " " & GetAktenvermerk(strlog) & " where heftnr=" & au.heftnr
-            Case AIS_Update.UpdateTyp.Adresse
-
-                strlog = "'" & Date.Today & " Adresse (Heft " & au.heftnr & ") durch Arzt " & arzt & "/Ärzteinfoservice aktualisiert' "
-                Dim strupdate As String = "update frauen set STRASSE='" & au.Strasse & "', plz=" & au.PLZ & ", ort='" & au.Ort & "' "
-
-                sql = strupdate & GetAktenvermerk(strlog) & from_eltern & au.heftnr
+                sql = strupdate_frauen & from_ausfrauen & au.heftnr
                 db_con.FireSQL(sql, trans)
 
 
-                sql = strupdate & GetAktenvermerk(strlog) & from_impfling & au.heftnr
+                sql = strupdate_eeinh & from_auseeinh & au.heftnr
+
+
+            Case AIS_Update.UpdateTyp.Adresse
+
+                strlog = "'" & Date.Today & " Adresse (Heft " & au.heftnr & ") durch Arzt " & arzt & "/Ärzteinfoservice aktualisiert' "
+                sql = "update frauen set STRASSE='" & au.Strasse & "', plz=" & au.PLZ & ", ort='" & au.Ort & "' "
+
+                sql = sql & GetAktenvermerk(strlog) & from_ausfrauen & au.heftnr
+                db_con.FireSQL(sql, trans)
+
+
+                sql = sql & GetAktenvermerk(strlog) & from_auseeinh & au.heftnr
 
 
             Case AIS_Update.UpdateTyp.NameImpfling
@@ -376,11 +411,11 @@ Public Class sync
                 Dim strupdate_frauen As String = "update frauen set Nachname='" & au.Nachname & "', Vorname=" & au.Vorname & ", TITEL=" & strTit_Prä & ", titel_suffix=" & strTit_Suf & " " & GetAktenvermerk(strlog)
                 Dim strupdate_eeinh As String = "update eeinh set nname='" & au.Nachname & "', Vname=" & au.Vorname & " " & GetAktenvermerk(strlog)
 
-                sql = strupdate_frauen & from_impfling & au.heftnr
+                sql = strupdate_frauen & from_auseeinh & au.heftnr
                 db_con.FireSQL(sql, trans)
 
 
-                sql = strupdate_eeinh & from_eltern & au.heftnr
+                sql = strupdate_eeinh & from_auseeinh & au.heftnr
 
 
 
@@ -397,16 +432,16 @@ Public Class sync
 
     End Function
 
-    Private Sub AISUpdateEeinh(sql As String, sql_from As String, strlog As String, db_con As cls_db_con, trans As SqlClient.SqlTransaction)
-        Dim ret As Integer = db_con.FireSQL(sql, trans)
-        If ret > 0 Then
+    'Private Sub AISUpdateEeinh(sql As String, sql_from As String, strlog As String, db_con As cls_db_con, trans As SqlClient.SqlTransaction)
+    '    Dim ret As Integer = db_con.FireSQL(sql, trans)
+    '    If ret > 0 Then
 
-            sql = "update frauen " & GetAktenvermerk(strlog, True) & sql_from
-            db_con.FireSQL(sql, trans)
-        End If
+    '        sql = "update frauen " & GetAktenvermerk(strlog, True) & sql_from
+    '        db_con.FireSQL(sql, trans)
+    '    End If
 
 
-    End Sub
+    'End Sub
 
     Private Function GetAktenvermerk(strlog As String, Optional singlefld As Boolean = False) As String
         Return If(singlefld, "", ",") & " aktenvermerke=(case when aktenvermerke IS null then " & strlog & " else aktenvermerke+ CHAR(13)+CHAR(10)+CHAR(13)+CHAR(10)+" & strlog & " end)  "
