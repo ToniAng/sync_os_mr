@@ -1639,10 +1639,14 @@ Public Class sync
 
         Try
 
+            ServicePointManager.Expect100Continue = True
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12
 
             WebRequest = CType(Net.WebRequest.Create(TargetAddr), HttpWebRequest) 'CType(WebRequest.Create(TargetAddr), HttpWebRequest)
             WebRequest.Timeout = 10000
             WebRequest.ReadWriteTimeout = 10000
+
+
 
             WebResponse = CType(WebRequest.GetResponse(), HttpWebResponse)
             'receiveStream = WebResponse.GetResponseStream()
@@ -1806,6 +1810,8 @@ Public Class sync
     End Property
 
     Private Function IsTestEnvironment() As Boolean
+
+
 
         If Environment.MachineName.ToLower = TEST_SERVER.ToLower Or Environment.MachineName.ToLower = TEST_SERVER2.ToLower Then
             Return True
