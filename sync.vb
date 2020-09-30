@@ -621,6 +621,15 @@ Public Class sync
 
         Dim bc As String = GetBoncode(vacc.heftnr, vacc.serum, vacc.impfung)
 
+
+
+        'Arztnr - Amtsarztdublette? - Umbuchen !
+
+        Dim tb As DataTable = db_con.GetRecordSet("select original from ghdaten..aa_dubletten where dublette=" & vacc.arztnr, trans)
+        If tb.Rows.Count > 0 Then vacc.arztnr = tb.Rows(0)("original")
+
+
+
         If String.IsNullOrEmpty(vacc.plid) Then
 
 
@@ -2145,7 +2154,7 @@ Public Class amtsarzt_voll
     Private m_Email As String
     Private m_BH As String
     Private m_BHNR As Integer
-    Private m_GID As String
+    Private m_BPK As String
     Private m_Tel As String
 
 
@@ -2156,7 +2165,7 @@ Public Class amtsarzt_voll
 
     End Sub
 
-    Public Sub New(strNN As String, strVN As String, strTitel As String, strStrasse As String, iPLZ As Integer, strOrt As String, strEmail As String, strBH As String, iBHNR As Integer, strGID As String, strTel As String, iArztnr As Integer)
+    Public Sub New(strNN As String, strVN As String, strTitel As String, strStrasse As String, iPLZ As Integer, strOrt As String, strEmail As String, strBH As String, iBHNR As Integer, strBPK As String, strTel As String, iArztnr As Integer)
 
 
         NN = strNN
@@ -2168,7 +2177,7 @@ Public Class amtsarzt_voll
         eMail = strEmail
         BH = strBH
         BHNR = iBHNR
-        GID = strGID
+        BPK = strBPK
         Tel = strTel
 
         Arztnr = iArztnr
@@ -2271,13 +2280,13 @@ Public Class amtsarzt_voll
         End Set
     End Property
 
-    Public Property GID As String
+    Public Property BPK As String
         Get
-            Return m_GID.Replace("'", "''")
+            Return m_BPK
 
         End Get
         Set(value As String)
-            m_GID = value
+            m_BPK = value
         End Set
     End Property
 
@@ -2301,6 +2310,8 @@ Public Class ghdb_amtsarzt
     Private m_trans As SqlClient.SqlTransaction = Nothing
     Private db_con As New cls_db_con
     Public Sub Add(aa As amtsarzt_voll, DBOnline As Boolean, trans As SqlClient.SqlTransaction)
+        'DBonline=true: wie befundne uns im OS
+        'DBonline=false: wie befunden uns im Sync-Programm
 
 
         m_trans = trans
@@ -2315,26 +2326,17 @@ Public Class ghdb_amtsarzt
 
 
             BeginTrans()
+
+
+
+
+
             Dim BH As String = ""
             If aa.Arztnr <= 0 Then
-
-                If Not DBOnline Then
-                    Throw New Exception("Arztnummer des neuen Amtsarztes (" & aa.NN & ") ist unbekannt.")
-                End If
-
-                aa.Arztnr = NeueArztnr()
+                Throw New Exception("Arztnummer des neuen Amtsarztes (" & aa.NN & ") ist unbekannt.")
             End If
 
-            If DBOnline Then
-                Dim tb_bh As DataTable = db_con.GetRecordSet("select name from ghdaten..aerzteliste where arztnr=" & aa.BHNR, m_trans)
-
-                If tb_bh.Rows.Count = 0 Then
-                    Throw New Exception("BH " & aa.BHNR & " nicht in der Ärzteliste gefunden.")
-                End If
-                BH = tb_bh.Rows(0)(0)
-            Else
-                BH = aa.BH
-            End If
+            BH = aa.BH
 
 
             Dim strSQL = "insert into ghdaten..AERZTELISTE (arztnr, gruppe, [name], grdtit, anrede, nname, vname, [Str], plz, ort, email, BH, bhnr, TEILNIMPF, PVP_GID,tel) values(" &
@@ -2352,19 +2354,31 @@ Public Class ghdb_amtsarzt
             "'" & BH & "'," &
             aa.BHNR & "," &
             "1," &
-            "'" & aa.GID & "'," &
+            "'" & aa.BPK & "'," &
             "'" & aa.Tel & "')"
+
+            'Nur Update?
+            Dim tb_test As DataTable = db_con.GetRecordSet("select arztnr from ghdaten..aerzteliste where arztnr=" & aa.Arztnr, m_trans)
+            If tb_test.Rows.Count > 0 Then
+
+                strSQL = "update  ghdaten..aerzteliste set pvp_gid='" & aa.BPK & "' where arztnr=" & aa.Arztnr
+
+            End If
 
 
 
             db_con.FireSQL(strSQL, m_trans)
 
-            If DBOnline Then db_con.FireSQL("insert into iaa(arztnr) values (" & aa.Arztnr & ")", m_trans)
 
 
-            'm_trans.Commit()
+            m_trans.Commit()
         Catch ex As Exception
-            'm_trans.Rollback()
+            Try
+
+                m_trans.Rollback()
+            Catch ex1 As Exception
+
+            End Try
 
             Throw New Exception(ex.Message)
 
@@ -2412,15 +2426,15 @@ Public Class ghdb_amtsarzt
     End Function
 
 
-    Private Function NeueArztnr() As Integer
-        BeginTrans()
+    'Private Function NeueArztnr() As Integer
+    '    BeginTrans()
 
-        Dim db_con As New cls_db_con
-        Dim tb As DataTable = db_con.GetRecordSet("select isnull(max(arztnr),8000000)+1 from aerzteliste where arztnr between 8000000 and 8999999", m_trans)
-        Return tb.Rows(0)(0)
+    '    Dim db_con As New cls_db_con
+    '    Dim tb As DataTable = db_con.GetRecordSet("select isnull(max(arztnr),8000000)+1 from aerzteliste where arztnr between 8000000 and 8999999", m_trans)
+    '    Return tb.Rows(0)(0)
 
 
-    End Function
+    'End Function
 
     Private Sub BeginTrans()
         If m_trans Is Nothing Then
