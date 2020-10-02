@@ -633,7 +633,13 @@ Public Class sync
         If String.IsNullOrEmpty(vacc.plid) Then
 
 
+            Dim Username As String
 
+            If Not String.IsNullOrEmpty(vacc.officialusername) Then
+                Username = vacc.officialusername
+            Else
+                Username = vacc.geandert
+            End If
 
 
             db_con.FireSQL("insert into ghdaten..impfdoku  (" &
@@ -651,7 +657,7 @@ Public Class sync
                      vacc.serum & "," &
                      IIf(bis6(pat.gebdat, CDate(vacc.datum)), -1, 0) & "," &
                      "'" & Date.Today & "'," &
-                     "'OS_" & vacc.geandert & "'," &
+                     "'OS_" & Username & "'," &
                      "'" & vacc.geandertam & "'," &
                      "0,0,0,0," &
                      vacc.heftnr & ", " &
@@ -1971,6 +1977,7 @@ Public Class Idata
     Public Property bhnr As Integer
 
     Public Property geandert As String
+    Public Property officialusername As String
 
     Public Property geandertam As Date
 
