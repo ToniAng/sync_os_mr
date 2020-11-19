@@ -67,6 +67,12 @@ Public Class Einstellungen
 
     Private db_con As New cls_db_con
 
+
+    Public Const TESTMACHINE As String = "PROXIMACENTAURI"
+    Public Const TESTMACHINE2 As String = "70-OPHIUCHI"
+
+
+
     Public Enum FarbPalette
         MultidimensionalAnalyse = 1
         Geoanalysen = 2
@@ -94,7 +100,16 @@ Public Class Einstellungen
     '            Return "Arial"
     '    End Select
     'End Function
+    Public Shared Function IsTestEnvironment() As Boolean
+        If Environment.MachineName.ToUpper = TESTMACHINE.ToUpper Or Environment.MachineName.ToUpper = TESTMACHINE2.ToUpper Then
+            Return True
+        Else
+            Return False
+        End If
 
+
+
+    End Function
 
     Public Sub LoadConfig(Optional ByVal trans As SqlClient.SqlTransaction = Nothing)
         Dim x As Integer
@@ -360,7 +375,57 @@ Public Class Einstellungen
             SetProp(palname, Me.ColorArrayToString(Value))
         End Set
     End Property
-   
+
+
+    Public Property Grippeimpfung65Plus_Impfstoff() As Integer
+        Get
+            Try
+                System.Threading.Monitor.Enter(Me)
+                If Not Isloaded Then LoadConfig()
+                Dim d As New DataView(tb)
+                d.RowFilter = "param='Grippeimpfung65Plus_Impfstoff'"
+                If d.Count > 0 Then
+                    Return d(0)(1)
+                Else
+                    Return 0
+                End If
+            Catch ex As Exception
+                Throw New Exception(ex.Message)
+            Finally
+                System.Threading.Monitor.Exit(Me)
+
+            End Try
+        End Get
+        Set(ByVal Value As Integer)
+            SetProp("Grippeimpfung65Plus_Impfstoff", Value)
+        End Set
+    End Property
+
+    Public Property Grippeimpfung65Plus_Honorar() As Single
+        Get
+            Try
+                System.Threading.Monitor.Enter(Me)
+                If Not Isloaded Then LoadConfig()
+                Dim d As New DataView(tb)
+                d.RowFilter = "param='Grippeimpfung65Plus_Honorar'"
+                If d.Count > 0 Then
+                    Return d(0)(1)
+                Else
+                    Return 0
+                End If
+            Catch ex As Exception
+                Throw New Exception(ex.Message)
+            Finally
+                System.Threading.Monitor.Exit(Me)
+
+            End Try
+        End Get
+        Set(ByVal Value As Single)
+            SetProp("Grippeimpfung65Plus_Honorar", Value)
+        End Set
+    End Property
+
+
 
     Private Function ColorArrayToString(ByVal m_color() As System.Drawing.Color) As String
         Dim sb As New System.Text.StringBuilder

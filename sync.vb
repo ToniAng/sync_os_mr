@@ -26,6 +26,7 @@ Public Class sync
     Private Const TAB_AA As String = "aa"
     Private Const TAB_AIS As String = "ais"
 
+    Private Const KEINE_CHARGE As String = "XXX-XXX"
 
 
     Private PARAM_LAST_VACC_SYNC As String = "LastVaccSyncOS"
@@ -595,11 +596,28 @@ Public Class sync
     'Public Function ToBase64(ByVal sText As String) As String
     '    Return System.Convert.ToBase64String(System.Text.Encoding.Default.GetBytes(sText))
     'End Function
+
     Private Function savevacc(vacc As Idata, pat As OSImpfling, trans As SqlClient.SqlTransaction) As String
         Dim db_con As New cls_db_con
+        Dim settings As New Einstellungen
         Dim strSQL As String
         Dim Charge = "NULL"
-        If Not String.IsNullOrEmpty(vacc.charge) Then Charge = "'" & vacc.charge & "'"
+        If Not (String.IsNullOrEmpty(vacc.charge) Or vacc.charge = KEINE_CHARGE) Then Charge = "'" & vacc.charge & "'"
+
+
+        Dim BHNR = "NULL"
+        If vacc.bhnr <> NO_VAL Then
+            BHNR = vacc.bhnr
+        End If
+
+        Dim RsnNobilling As String = "'BH-Impfung, Online'"
+        Dim bRsnNobilling As String = "-1"
+        Dim Satz As String = "0"
+        If vacc.serum = settings.Grippeimpfung65Plus_Impfstoff And vacc.bhnr = NO_VAL Then
+            Satz = settings.Grippeimpfung65Plus_Honorar.ToString.Replace(",", ".")
+            RsnNobilling = "NULL"
+            bRsnNobilling = "0"
+        End If
 
 
 
@@ -629,90 +647,92 @@ Public Class sync
         If tb.Rows.Count > 0 Then vacc.arztnr = tb.Rows(0)("original")
 
 
+        'If Not Einstellungen.IsTestEnvironment Then
 
         If String.IsNullOrEmpty(vacc.plid) Then
 
 
-            Dim Username As String
+            'Dim Username As String
 
-            If Not String.IsNullOrEmpty(vacc.officialusername) Then
-                Username = vacc.officialusername
-            Else
-                Username = vacc.geandert
-            End If
+            'If Not String.IsNullOrEmpty(vacc.officialusername) Then
+            '    Username = vacc.officialusername
+            'Else
+            '    Username = vacc.geandert
+            'End If
 
 
             db_con.FireSQL("insert into ghdaten..impfdoku  (" &
-                     "datum,nname,vname,gebdat,chargenr," &
-                     "arztnr,serum,bis6,eingang,geandert," &
-                     "geandertam,satz,mwsthon,aposatz,apomwst," &
-                     "heftnr,boncode,impfung,NoBilling,RsnNoBilling," &
-                     "Prog,bhnr,standort,standortid) values (" &
-                     "'" & CDate(vacc.datum).ToShortDateString & "'," &
-                     "'" & pat.nn & "'," &
-                     "'" & pat.vn & "'," &
-                     "'" & pat.gebdat & "'," &
-                     Charge & "," &
-                     vacc.arztnr & "," &
-                     vacc.serum & "," &
-                     IIf(bis6(pat.gebdat, CDate(vacc.datum)), -1, 0) & "," &
-                     "'" & Date.Today & "'," &
-                     "'OS_" & Username & "'," &
-                     "'" & vacc.geandertam & "'," &
-                     "0,0,0,0," &
-                     vacc.heftnr & ", " &
-                     bc & "," &
-                     vacc.impfung & "," &
-                     "-1,'BH-Impfung, Online'," &
-                     vacc.prog & "," &
-                     vacc.bhnr & "," &
-                     standort & "," &
-                     standortid &
-                     ")", trans)
+                         "datum,nname,vname,gebdat,chargenr," &
+                         "arztnr,serum,bis6,eingang,geandert," &
+                         "geandertam,satz,mwsthon,aposatz,apomwst," &
+                         "heftnr,boncode,impfung,NoBilling,RsnNoBilling," &
+                         "Prog,bhnr,standort,standortid) values (" &
+                         "'" & CDate(vacc.datum).ToShortDateString & "'," &
+                         "'" & pat.nn & "'," &
+                         "'" & pat.vn & "'," &
+                         "'" & pat.gebdat & "'," &
+                         Charge & "," &
+                         vacc.arztnr & "," &
+                         vacc.serum & "," &
+                         IIf(bis6(pat.gebdat, CDate(vacc.datum)), -1, 0) & "," &
+                         "'" & Date.Today & "'," &
+                         "'OS_" & vacc.geandert & "'," &
+                         "'" & vacc.geandertam & "'," &
+                         Satz & ",0,0,0," &
+                         vacc.heftnr & ", " &
+                         bc & "," &
+                         vacc.impfung & "," &
+                          bRsnNobilling & "," & RsnNobilling & "," &
+                         vacc.prog & "," &
+                         BHNR & "," &
+                         standort & "," &
+                         standortid &
+                         ")", trans)
 
         Else
-            Dim s As String() = vacc.plid.Split("|")
+                Dim s As String() = vacc.plid.Split("|")
 
-            If vacc.del <> 0 Then
-                strSQL = "delete ghdaten..impfdoku where datum='" & s(0) & "' and boncode=" & s(1)
-                db_con.FireSQL(strSQL, trans)
-                AktionsLog("Impfung wurde gelöscht: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
-            Else
-                strSQL = "update ghdaten..impfdoku set " &
-                    "datum='" & CDate(vacc.datum).ToShortDateString & "'," &
-                    "nname='" & pat.nn & "'," &
-                    "vname='" & pat.vn & "'," &
-                    "gebdat='" & pat.gebdat & "'," &
-                    "chargenr=" & Charge & "," &
-                    "arztnr=" & vacc.arztnr & "," &
-                    "serum=" & vacc.serum & "," &
-                    "bis6=" & IIf(bis6(pat.gebdat, CDate(vacc.datum)), -1, 0) & "," &
-                    "eingang='" & Date.Today & "'," &
-                    "geandert='OS_" & vacc.geandert & "'," &
-                    "geandertam='" & vacc.geandertam & "'," &
-                    "satz=0,mwsthon=0,aposatz=0,apomwst=0," &
-                    "heftnr=" & vacc.heftnr & ", " &
-                    "boncode=" & bc & "," &
-                    "impfung=" & vacc.impfung & "," &
-                    "NoBilling=-1,RsnNoBilling='BH-Impfung, Online'," &
-                    "Prog=" & vacc.prog & "," &
-                    "bhnr=" & vacc.bhnr & "," &
-                    "standort=" & standort & "," &
-                    "standortid=" & standortid & " " &
-                    "where datum='" & s(0) & "' and boncode=" & bc
+                If vacc.del <> 0 Then
+                    strSQL = "delete ghdaten..impfdoku where datum='" & s(0) & "' and boncode=" & s(1)
+                    db_con.FireSQL(strSQL, trans)
+                    AktionsLog("Impfung wurde gelöscht: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
+                Else
+                    strSQL = "update ghdaten..impfdoku set " &
+                        "datum='" & CDate(vacc.datum).ToShortDateString & "'," &
+                        "nname='" & pat.nn & "'," &
+                        "vname='" & pat.vn & "'," &
+                        "gebdat='" & pat.gebdat & "'," &
+                        "chargenr=" & Charge & "," &
+                        "arztnr=" & vacc.arztnr & "," &
+                        "serum=" & vacc.serum & "," &
+                        "bis6=" & IIf(bis6(pat.gebdat, CDate(vacc.datum)), -1, 0) & "," &
+                        "eingang='" & Date.Today & "'," &
+                        "geandert='OS_" & vacc.geandert & "'," &
+                        "geandertam='" & vacc.geandertam & "'," &
+                        "satz=" & Satz & ",mwsthon=0,aposatz=0,apomwst=0," &
+                        "heftnr=" & vacc.heftnr & ", " &
+                        "boncode=" & bc & "," &
+                        "impfung=" & vacc.impfung & "," &
+                        "NoBilling=" & bRsnNobilling & ",RsnNoBilling=" & RsnNobilling & "," &
+                        "Prog=" & vacc.prog & "," &
+                        "bhnr=" & BHNR & "," &
+                        "standort=" & standort & "," &
+                        "standortid=" & standortid & " " &
+                        "where datum='" & s(0) & "' and boncode=" & bc
 
-                db_con.FireSQL(strSQL, trans)
+                    db_con.FireSQL(strSQL, trans)
 
 
-                AktionsLog("Impfung wurde verändert: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
+                    AktionsLog("Impfung wurde verändert: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
 
+
+                End If
 
             End If
 
 
 
-
-        End If
+        'End If
 
         Return bc
 
@@ -1404,125 +1424,6 @@ Public Class sync
             Gebdat.Year.ToString.Substring(2, 2)
 
     End Function
-    'Private Function InsertEltern(pat As OSImpfling, Optional trans As SqlClient.SqlTransaction = Nothing) As Integer
-
-    '    Dim db_con As New cls_db_con
-    '    Dim tb As DataTable
-    '    Dim hasSVN As Boolean = IIf(String.IsNullOrEmpty(pat.refpers_vnr1) Or String.IsNullOrEmpty(pat.refpers_vnr2), False, True)
-
-    '    Dim svnrdata As String = "NULL"
-    '    Dim gebdat As String = "NULL"
-
-    '    Dim SVNRID As Integer = 0
-
-
-    '    If hasSVN Then
-    '        svnrdata = "'" & pat.refpers_vnr1 & "'"
-    '        gebdat = "'" & pat.refpers_vnr2 & "'"
-
-
-    '        tb = db_con.GetRecordSet("select svnrid from frauen where svnrdata='" & pat.refpers_vnr1 & "' and gbdatum='" & pat.refpers_vnr2 & "'", trans)
-    '        If tb.Rows.Count > 0 Then SVNRID = tb.Rows(0)("svnr_id")
-
-
-
-    '    End If
-
-    '    Dim Titel As String = "NULL"
-    '    Dim NGTitel As String = "NULL"
-    '    If Not String.IsNullOrEmpty(pat.refpers_titel) Then Titel = "'" & pat.refpers_titel & "'"
-    '    If Not String.IsNullOrEmpty(pat.refpers_ngtitel) Then NGTitel = "'" & pat.refpers_ngtitel & "'"
-
-
-    '    If SVNRID = 0 Then
-
-    '        tb = db_con.GetRecordSet("select svnr_id from frauen where nachname='" & pat.refpers_nn & "' and vorname='" & pat.refpers_vn & "' " &
-    '                                 "and gebdat='" & pat.refpers_gebdat & "'", trans)
-
-
-    '        If tb.Rows.Count = 1 Then
-    '            SVNRID = tb.Rows(0)(0)
-    '        End If
-
-    '    End If
-
-    '    Dim ic As New ImportGeocodierung(pat.strasse & " " & pat.hnr, pat.plz, pat.ort)
-
-    '    Dim Jetzt As Date = Date.Now
-    '    If SVNRID > 0 Then
-
-
-
-    '        Dim sql As String = "update frauen set " &
-    '                   "anrede=" & IIf(pat.refpers_sex = "w", -1, 0) & "," &
-    '                   "nachname='" & pat.refpers_nn & "'," &
-    '                   "vorname='" & pat.refpers_vn & "'," &
-    '                   "gebdat='" & pat.refpers_gebdat & "'," &
-    '                   "strasse='" & pat.strasse & " " & pat.hnr & "'," &
-    '                   "plz=" & pat.plz & "," &
-    '                   "ort='" & pat.ort & "'," &
-    '                   "svnrdata=" & svnrdata & "," &
-    '                   "gbdatum=" & gebdat & ", " &
-    '                   "sva=8," &
-    '                   "kreiertam='" & Jetzt & "'," &
-    '                   "geandertam='" & Jetzt & "'," &
-    '                   "AlterAddress='" & Jetzt & "'," &
-    '                   "kreiert='OS_" & pat.username & "'," &
-    '                   "geandert='OS_" & pat.username & "'," &
-    '                   "titel=" & Titel & "," &
-    '                   "titel_suffix=" & NGTitel & "," &
-    '                   ic.UpdateSQLmitGKZ & " " &
-    '                   "where svnr_id=" & SVNRID
-
-    '        db_con.FireSQL(sql, trans)
-
-    '        AktionsLog("Update Eltern-DS: " & sql, AktionslogKat.Integration_BH_Impfungen, trans)
-
-    '    Else
-    '        Dim sql As String = "insert into frauen (heftnrf,anrede,nachname,vorname,gebdat,strasse,plz,ort,svnrdata,gbdatum,sva,kreiertam,geandertam,AlterAddress,kreiert,geandert,titel, titel_suffix, breitengrad,laengengrad,GeocodeLevel,gemeindeid) values ( " &
-    '                   "0," &
-    '                   IIf(pat.refpers_sex = "w", -1, 0) & "," &
-    '                   " '" & pat.refpers_nn & "'," &
-    '                   "'" & pat.refpers_vn & "'," &
-    '                   "'" & pat.refpers_gebdat & "'," &
-    '                   "'" & pat.strasse & " " & pat.hnr & "'," &
-    '                   pat.plz & "," &
-    '                   "'" & pat.ort & "'," &
-    '                   svnrdata & "," &
-    '                   gebdat & ", " &
-    '                   "8," &
-    '                   "'" & Jetzt & "'," &
-    '                   "'" & Jetzt & "'," &
-    '                   "'" & Jetzt & "'," &
-    '                   "'OS_" & pat.username & "'," &
-    '                   "'OS_" & pat.username & "'," &
-    '                   Titel & "," &
-    '                   NGTitel & "," &
-    '                   ic.InsertSQLMitGKZ & ")"
-
-    '        db_con.FireSQL(sql, trans)
-
-    '        AktionsLog("Neuer Eltern-DS: " & sql, AktionslogKat.Integration_BH_Impfungen, trans)
-
-    '        tb = db_con.GetRecordSet("select svnr_id from frauen where " &
-    '                    "kreiertam='" & Jetzt & "' " &
-    '                    "and nachname='" & pat.refpers_nn & "' " &
-    '                    "and kreiert='OS_" & pat.username & "'", trans)
-
-
-    '        If tb.Rows.Count = 0 Then
-    '            Throw New Exception("Eingefügten Elternteil nicht gefunden.")
-    '        Else
-    '            SVNRID = tb.Rows(0)("svnr_id")
-    '        End If
-
-    '    End If
-
-    '    Return SVNRID
-
-
-
-    'End Function
 
     Private Function InsertHeftnr(pat As OSImpfling, Optional SVNRID As Integer = NO_VAL, Optional trans As SqlClient.SqlTransaction = Nothing) As Integer
         Dim db_con As New cls_db_con
@@ -1538,36 +1439,6 @@ Public Class sync
         Return heftnr
     End Function
 
-    'Private Function InsertHeftnrKind(pat As OSImpfling, SVNRID As Integer, Optional trans As SqlClient.SqlTransaction = Nothing) As Integer
-    '    Dim db_con As New cls_db_con
-    '    Dim heftnr As Integer = HEFTBASIS + SVNRID
-
-
-
-
-
-    '    Dim tb As DataTable = db_con.GetRecordSet("select id from eeinh where " &
-    '                                             "nname='" & pat.nn & "' " &
-    '                                             "and vname='" & pat.vn & "' " &
-    '                                             "and gb_tm='" & pat.gebdat & "' " &
-    '                                             "and svnr_id=" & SVNRID, trans)
-
-
-    '    If tb.Rows.Count = 0 Then
-    '        Throw New Exception("Kinderdatensatz wurde nicht gefunden.")
-    '    End If
-
-    '    Dim KindID As Integer = tb.Rows(0)(0)
-
-
-    '    Dim sql As String = "update eeinh set heftnr=" & heftnr & " where id=" & KindID
-
-    '    db_con.FireSQL(sql, trans)
-
-    '    AktionsLog("Neue Impf-ID: " & sql, AktionslogKat.Integration_BH_Impfungen, trans)
-
-    '    Return heftnr
-    'End Function
 
 
 
@@ -2321,48 +2192,36 @@ Public Class ghdb_amtsarzt
         'DBonline=false: wie befunden uns im Sync-Programm
 
 
+
+        Console.WriteLine("Amtsarzt hinzufügen 1")
+
+
+
+
         m_trans = trans
 
 
 
+        BeginTrans()
+
+
+        Console.WriteLine("Amtsarzt hinzufügen 2")
 
 
 
-        Try
+        Dim BH As String = ""
+        If aa.Arztnr <= 0 Then
+            Throw New Exception("Arztnummer des neuen Amtsarztes (" & aa.NN & ") ist unbekannt.")
+        End If
+
+        BH = aa.BH
+
+        If Not Einstellungen.IsTestEnvironment Then
+
+            Console.WriteLine("Amtsarzt hinzufügen 3, Arztnr=" & aa.Arztnr)
 
 
-
-            BeginTrans()
-
-
-
-
-
-            Dim BH As String = ""
-            If aa.Arztnr <= 0 Then
-                Throw New Exception("Arztnummer des neuen Amtsarztes (" & aa.NN & ") ist unbekannt.")
-            End If
-
-            BH = aa.BH
-
-
-            Dim strSQL = "insert into ghdaten..AERZTELISTE (arztnr, gruppe, [name], grdtit, anrede, nname, vname, [Str], plz, ort, email, BH, bhnr, TEILNIMPF, PVP_GID,tel) values(" &
-            aa.Arztnr & "," &
-            "'Amtsarzt'," &
-            "'" & aa.NN & " " & aa.VN & "'," &
-            "'" & aa.Titel & "'," &
-            "'" & GetAnrede(aa.VN) & "'," &
-            "'" & aa.NN & "'," &
-            "'" & aa.VN & "'," &
-            "'" & aa.Strasse & "'," &
-            aa.PLZ & "," &
-            "'" & aa.Ort & "'," &
-            "'" & aa.eMail & "'," &
-            "'" & BH & "'," &
-            aa.BHNR & "," &
-            "1," &
-            "'" & aa.BPK & "'," &
-            "'" & aa.Tel & "')"
+            Dim strSQL As String
 
             'Nur Update?
             Dim tb_test As DataTable = db_con.GetRecordSet("select arztnr from ghdaten..aerzteliste where arztnr=" & aa.Arztnr, m_trans)
@@ -2370,35 +2229,59 @@ Public Class ghdb_amtsarzt
 
                 strSQL = "update  ghdaten..aerzteliste set pvp_gid='" & aa.BPK & "' where arztnr=" & aa.Arztnr
 
+
+
+
+            Else
+                'Insert
+
+                strSQL = "insert into ghdaten..AERZTELISTE (arztnr, gruppe, [name], grdtit, anrede, nname, vname, [Str], plz, ort, email, BH, bhnr, TEILNIMPF, PVP_GID,tel) values(" &
+                        aa.Arztnr & "," &
+                        "'Amtsarzt'," &
+                        "'" & aa.NN & " " & aa.VN & "'," &
+                        "'" & aa.Titel & "'," &
+                        "'" & GetAnrede(aa.VN) & "'," &
+                        "'" & aa.NN & "'," &
+                        "'" & aa.VN & "'," &
+                        "'" & aa.Strasse & "'," &
+                        aa.PLZ & "," &
+                        "'" & aa.Ort & "'," &
+                        "'" & aa.eMail & "'," &
+                        "'" & BH & "'," &
+                        aa.BHNR & "," &
+                        "1," &
+                        "'" & aa.BPK & "'," &
+                        "'" & aa.Tel & "')"
+
+
+
             End If
 
 
 
             db_con.FireSQL(strSQL, m_trans)
 
-
-
-            m_trans.Commit()
-        Catch ex As Exception
             Try
+                Dim osync As New sync
 
-                m_trans.Rollback()
-            Catch ex1 As Exception
+
+                If tb_test.Rows.Count > 0 Then
+                    osync.AktionsLog("BPK für Amtsarzt " & aa.Arztnr & " wurde eingetragen.", sync.AktionslogKat.Integration_BH_Impfungen, m_trans)
+                Else
+                    osync.AktionsLog("Neuer Amtsarzt " & aa.Arztnr & " wurde erstellt.", sync.AktionslogKat.Integration_BH_Impfungen, m_trans)
+
+                End If
+            Catch ex As Exception
 
             End Try
 
-            Throw New Exception(ex.Message)
 
 
-        Finally
-            Try
-                m_con.Close()
-                m_con.Dispose()
-            Catch ex2 As Exception
+        End If
 
-            End Try
 
-        End Try
+
+
 
 
 
