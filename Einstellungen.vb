@@ -425,7 +425,54 @@ Public Class Einstellungen
         End Set
     End Property
 
+    Public Property Grippeimpfung65Plus_Wegpauschale() As Single
+        Get
+            Try
+                System.Threading.Monitor.Enter(Me)
+                If Not Isloaded Then LoadConfig()
+                Dim d As New DataView(tb)
+                d.RowFilter = "param='Grippeimpfung65Plus_Wegpauschale'"
+                If d.Count > 0 Then
+                    Return d(0)(1)
+                Else
+                    Return 0
+                End If
+            Catch ex As Exception
+                Throw New Exception(ex.Message)
+            Finally
+                System.Threading.Monitor.Exit(Me)
 
+            End Try
+        End Get
+        Set(ByVal Value As Single)
+            SetProp("Grippeimpfung65Plus_Wegpauschale", Value)
+        End Set
+    End Property
+
+
+    Public Property Grippeimpfung65Plus_Wegpauschale_Mwst() As Single
+        Get
+            Try
+                System.Threading.Monitor.Enter(Me)
+                If Not Isloaded Then LoadConfig()
+                Dim d As New DataView(tb)
+                d.RowFilter = "param='Grippeimpfung65Plus_Wegpauschale_Mwst'"
+                If d.Count > 0 Then
+                    Return d(0)(1)
+                Else
+                    Return 0
+                End If
+            Catch ex As Exception
+                Throw New Exception(ex.Message)
+            Finally
+                System.Threading.Monitor.Exit(Me)
+
+            End Try
+        End Get
+        Set(ByVal Value As Single)
+            SetProp("Grippeimpfung65Plus_Wegpauschale_Mwst", Value)
+        End Set
+    End Property
 
     Private Function ColorArrayToString(ByVal m_color() As System.Drawing.Color) As String
         Dim sb As New System.Text.StringBuilder

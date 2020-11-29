@@ -649,6 +649,17 @@ Public Class sync
 
         'If Not Einstellungen.IsTestEnvironment Then
 
+        Dim wp As Integer = 0
+        Dim wp_satz As String = "0"
+        Dim wp_mwst As String = "0"
+        If vacc.wegpauschale Then
+            wp = 1
+            wp_satz = settings.Grippeimpfung65Plus_Wegpauschale.ToString.Replace(",", ".")
+            wp_mwst = settings.Grippeimpfung65Plus_Wegpauschale_Mwst.ToString.Replace(",", ".")
+        End If
+
+
+
         If String.IsNullOrEmpty(vacc.plid) Then
 
 
@@ -660,11 +671,11 @@ Public Class sync
             '    Username = vacc.geandert
             'End If
 
-
-            db_con.FireSQL("insert into ghdaten..impfdoku  (" &
+            strSQL = "insert into ghdaten..impfdoku  (" &
                          "datum,nname,vname,gebdat,chargenr," &
                          "arztnr,serum,bis6,eingang,geandert," &
                          "geandertam,satz,mwsthon,aposatz,apomwst," &
+                         "wegpauschale,wegpauschale_satz,wegpauschale_mwst," &
                          "heftnr,boncode,impfung,NoBilling,RsnNoBilling," &
                          "Prog,bhnr,standort,standortid) values (" &
                          "'" & CDate(vacc.datum).ToShortDateString & "'," &
@@ -679,6 +690,9 @@ Public Class sync
                          "'OS_" & vacc.geandert & "'," &
                          "'" & vacc.geandertam & "'," &
                          Satz & ",0,0,0," &
+                         wp & "," &
+                         wp_satz & "," &
+                         wp_mwst & "," &
                          vacc.heftnr & ", " &
                          bc & "," &
                          vacc.impfung & "," &
@@ -687,7 +701,10 @@ Public Class sync
                          BHNR & "," &
                          standort & "," &
                          standortid &
-                         ")", trans)
+                         ")"
+
+
+            db_con.FireSQL(strSQL, trans)
 
         Else
                 Dim s As String() = vacc.plid.Split("|")
@@ -697,7 +714,7 @@ Public Class sync
                     db_con.FireSQL(strSQL, trans)
                     AktionsLog("Impfung wurde gelöscht: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
                 Else
-                    strSQL = "update ghdaten..impfdoku set " &
+                strSQL = "update ghdaten..impfdoku set " &
                         "datum='" & CDate(vacc.datum).ToShortDateString & "'," &
                         "nname='" & pat.nn & "'," &
                         "vname='" & pat.vn & "'," &
@@ -714,13 +731,16 @@ Public Class sync
                         "boncode=" & bc & "," &
                         "impfung=" & vacc.impfung & "," &
                         "NoBilling=" & bRsnNobilling & ",RsnNoBilling=" & RsnNobilling & "," &
+                         "wegpauschale=" & wp & "," &
+                         "wegpauschale_satz=" & wp_satz & "," &
+                         "wegpauschale_mwst=" & wp_mwst & "," &
                         "Prog=" & vacc.prog & "," &
                         "bhnr=" & BHNR & "," &
                         "standort=" & standort & "," &
                         "standortid=" & standortid & " " &
                         "where datum='" & s(0) & "' and boncode=" & bc
 
-                    db_con.FireSQL(strSQL, trans)
+                db_con.FireSQL(strSQL, trans)
 
 
                     AktionsLog("Impfung wurde verändert: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
@@ -1856,6 +1876,7 @@ Public Class Idata
     Public Property plid As String = ""
 
     Public Property del As Integer = 0
+    Public Property wegpauschale As Boolean = False
 
 
 End Class
