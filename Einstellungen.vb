@@ -450,6 +450,52 @@ Public Class Einstellungen
     End Property
 
 
+    Public Property Grippeimpfung65Plus_HASatz() As Single
+        Get
+            Try
+                System.Threading.Monitor.Enter(Me)
+                If Not Isloaded Then LoadConfig()
+                Dim d As New DataView(tb)
+                d.RowFilter = "param='Grippeimpfung65Plus_HASatz'"
+                If d.Count > 0 Then
+                    Return d(0)(1)
+                Else
+                    Return 2.0
+                End If
+            Catch ex As Exception
+                Throw New Exception(ex.Message)
+            Finally
+                System.Threading.Monitor.Exit(Me)
+
+            End Try
+        End Get
+        Set(ByVal Value As Single)
+            SetProp("Grippeimpfung65Plus_HASatz", Value)
+        End Set
+    End Property
+    Public Property Grippeimpfung65Plus_HAMwst() As Single
+        Get
+            Try
+                System.Threading.Monitor.Enter(Me)
+                If Not Isloaded Then LoadConfig()
+                Dim d As New DataView(tb)
+                d.RowFilter = "param='Grippeimpfung65Plus_HAMwst'"
+                If d.Count > 0 Then
+                    Return d(0)(1)
+                Else
+                    Return 0.2
+                End If
+            Catch ex As Exception
+                Throw New Exception(ex.Message)
+            Finally
+                System.Threading.Monitor.Exit(Me)
+
+            End Try
+        End Get
+        Set(ByVal Value As Single)
+            SetProp("Grippeimpfung65Plus_HAMwst", Value)
+        End Set
+    End Property
     Public Property Grippeimpfung65Plus_Wegpauschale_Mwst() As Single
         Get
             Try

@@ -32,6 +32,7 @@ Public Class sync
     Private PARAM_LAST_VACC_SYNC As String = "LastVaccSyncOS"
 
 
+    Private Const MD_TRÄGER_ID_MIN As Integer = 1000
 
 
     Private Enum DS_Typ
@@ -613,10 +614,13 @@ Public Class sync
         Dim RsnNobilling As String = "'BH-Impfung, Online'"
         Dim bRsnNobilling As String = "-1"
         Dim Satz As String = "0"
+        Dim hsatz As HASatz
+
         If vacc.serum = settings.Grippeimpfung65Plus_Impfstoff And vacc.bhnr = NO_VAL Then
             Satz = settings.Grippeimpfung65Plus_Honorar.ToString.Replace(",", ".")
             RsnNobilling = "NULL"
             bRsnNobilling = "0"
+            hsatz = GetHASätze(vacc.arztnr, vacc.heftnr)
         End If
 
 
@@ -652,12 +656,23 @@ Public Class sync
         Dim wp As Integer = 0
         Dim wp_satz As String = "0"
         Dim wp_mwst As String = "0"
+
+
+
         If vacc.wegpauschale Then
             wp = 1
             wp_satz = settings.Grippeimpfung65Plus_Wegpauschale.ToString.Replace(",", ".")
             wp_mwst = settings.Grippeimpfung65Plus_Wegpauschale_Mwst.ToString.Replace(",", ".")
         End If
 
+
+
+
+        'Console.WriteLine("vacc.wegpauschale: " & vacc.wegpauschale)
+        'Console.WriteLine("WP: " & wp)
+        'Console.WriteLine("wp_satz: " & wp_satz)
+        'Console.WriteLine("wp_mwst: " & wp_mwst)
+        'Console.WriteLine("Satz: " & settings.Grippeimpfung65Plus_Wegpauschale)
 
 
         If String.IsNullOrEmpty(vacc.plid) Then
@@ -689,7 +704,7 @@ Public Class sync
                          "'" & Date.Today & "'," &
                          "'OS_" & vacc.geandert & "'," &
                          "'" & vacc.geandertam & "'," &
-                         Satz & ",0,0,0," &
+                         Satz & ",0," & hsatz.satz.ToString.ToString.Replace(",", ".") & "," & hsatz.mwst.ToString.Replace(",", ".") & "," &
                          wp & "," &
                          wp_satz & "," &
                          wp_mwst & "," &
@@ -760,6 +775,93 @@ Public Class sync
     Private Function GetBoncode(Heftnr As Integer, Impfstoff As Integer, Impfung As Integer) As String
         Return Heftnr & Format(CInt(Impfstoff), "00") & Impfung
     End Function
+
+
+    Private Function GetHASätze(Arztnr As Integer, Hefrtnr As Integer) As HASatz
+        Dim db_con As New cls_db_con
+        Dim hs As New HASatz
+        Dim settings As New Einstellungen
+        If IsDOCHausapotheker(Arztnr) And IsMobilerDienstIMpfling(Hefrtnr) Then
+            hs.satz = settings.Grippeimpfung65Plus_HASatz
+            hs.mwst = settings.Grippeimpfung65Plus_HAMwst
+        Else
+            hs.satz = 0
+            hs.mwst = 0
+        End If
+
+        Return hs
+
+
+    End Function
+
+    Private Function IsMobilerDienstIMpfling(heftnr As Integer) As Boolean
+        Dim db_con As New cls_db_con
+        Dim tb As DataTable = db_con.GetRecordSet("select betreuendestelle from frauen where heftnrf=" & heftnr)
+
+        If tb.Rows.Count > 0 Then
+            If Not IsDBNull(tb.Rows(0)(0)) Then Return False
+
+            If tb.Rows(0)(0) >= MD_TRÄGER_ID_MIN Then
+                Return True
+            Else
+                Return False
+
+            End If
+
+            Else
+                Return False
+
+        End If
+
+
+
+    End Function
+
+    Private Function HausapothekeAktuell(von As String, bis As String) As Boolean
+
+        If von = "" Then Return False
+
+
+        If Date.Compare(CDate(von), Date.Today) <= 0 Then
+
+            If bis = "" Then
+                Return True
+            Else
+                If Date.Compare(CDate(bis), Date.Today) >= 0 Then
+                    Return True
+
+                Else
+                    Return False
+
+                End If
+
+
+
+            End If
+
+
+        End If
+
+        Return False
+
+    End Function
+
+    Private Function IsDOCHausapotheker(arztnr As Integer) As Boolean
+        Dim db_con As New cls_db_con
+
+        Dim tb As DataTable = db_con.GetRecordSet("select ha_begin, ha_ende from aerzteliste where arztnr=" & arztnr)
+
+        If HausapothekeAktuell(tb.Rows(0)("ha_begin"), tb.Rows(0)("ha_ende")) Then
+            Return True
+        Else
+            Return False
+        End If
+
+
+    End Function
+
+
+
 
     Function bis6(Geburtsdatum As Date, Impfdatum As Date) As Boolean
         'Validate auf true, wenn gecancelt werden soll
@@ -2356,4 +2458,10 @@ Public Class ghdb_amtsarzt
     End Sub
 
 
+End Class
+
+
+Friend Class HASatz
+    Public satz As Single = 0
+    Public mwst As Single = 0
 End Class
