@@ -614,13 +614,13 @@ Public Class sync
         Dim RsnNobilling As String = "'BH-Impfung, Online'"
         Dim bRsnNobilling As String = "-1"
         Dim Satz As String = "0"
-        Dim hsatz As HASatz
+        Dim hsatz As New HASatz
 
-        If vacc.serum = settings.Grippeimpfung65Plus_Impfstoff And vacc.bhnr = NO_VAL Then
+        If vacc.prog = settings.Grippeimpfung65Plus_Impfstoff And vacc.bhnr = NO_VAL Then
             Satz = settings.Grippeimpfung65Plus_Honorar.ToString.Replace(",", ".")
             RsnNobilling = "NULL"
             bRsnNobilling = "0"
-            hsatz = GetHASätze(vacc.arztnr, vacc.heftnr)
+            hsatz = GetHASätze(vacc.arztnr, vacc.heftnr, vacc.prog)
         End If
 
 
@@ -777,19 +777,43 @@ Public Class sync
     End Function
 
 
-    Private Function GetHASätze(Arztnr As Integer, Hefrtnr As Integer) As HASatz
+    Private Function GetHASätze(Arztnr As Integer, Hefrtnr As Integer, prog As Integer) As HASatz
         Dim db_con As New cls_db_con
         Dim hs As New HASatz
         Dim settings As New Einstellungen
-        If IsDOCHausapotheker(Arztnr) And IsMobilerDienstIMpfling(Hefrtnr) Then
-            hs.satz = settings.Grippeimpfung65Plus_HASatz
-            hs.mwst = settings.Grippeimpfung65Plus_HAMwst
-        Else
-            hs.satz = 0
-            hs.mwst = 0
+        If IsDOCHausapotheker(Arztnr) Then
+            If IsMobilerDienstIMpfling(Hefrtnr) Then
+                If Not HAKontingentVerbraucht(Arztnr, prog) Then
+                    hs.satz = settings.Grippeimpfung65Plus_HASatz
+                    hs.mwst = settings.Grippeimpfung65Plus_HAMwst
+                End If
+            End If
         End If
 
         Return hs
+
+
+    End Function
+
+
+    Private Function HAKontingentVerbraucht(Arztnr As Integer, Prog As Integer) As Boolean
+        Dim db_con As New cls_db_con
+        Dim kontingent As Integer = 0
+        Dim verbraucht As Integer = 0
+        Dim tb_kontinget As DataTable = db_con.GetRecordSet("select sum(anzahl) from gi65p_einleselog where apotheke=" & Arztnr & " and prog=" & Prog)
+        Dim tb_verbraucht As DataTable = db_con.GetRecordSet("select count(*) from impfdoku where arztnr=" & Arztnr & " and prog=" & Prog)
+
+
+        If Not IsDBNull(tb_kontinget.Rows(0)(0)) Then kontingent = tb_kontinget.Rows(0)(0)
+        If Not IsDBNull(tb_verbraucht.Rows(0)(0)) Then verbraucht = tb_verbraucht.Rows(0)(0)
+
+
+
+        If verbraucht >= kontingent Then
+            Return True
+        Else
+            Return False
+        End If
 
 
     End Function
@@ -799,7 +823,7 @@ Public Class sync
         Dim tb As DataTable = db_con.GetRecordSet("select betreuendestelle from frauen where heftnrf=" & heftnr)
 
         If tb.Rows.Count > 0 Then
-            If Not IsDBNull(tb.Rows(0)(0)) Then Return False
+            If IsDBNull(tb.Rows(0)(0)) Then Return False
 
             If tb.Rows(0)(0) >= MD_TRÄGER_ID_MIN Then
                 Return True
@@ -808,8 +832,8 @@ Public Class sync
 
             End If
 
-            Else
-                Return False
+        Else
+            Return False
 
         End If
 
@@ -850,8 +874,12 @@ Public Class sync
         Dim db_con As New cls_db_con
 
         Dim tb As DataTable = db_con.GetRecordSet("select ha_begin, ha_ende from aerzteliste where arztnr=" & arztnr)
+        Dim von As String = ""
+        Dim bis As String = ""
+        If Not IsDBNull(tb.Rows(0)("ha_begin")) Then von = tb.Rows(0)("ha_begin")
+        If Not IsDBNull(tb.Rows(0)("ha_ende")) Then bis = tb.Rows(0)("ha_ende")
 
-        If HausapothekeAktuell(tb.Rows(0)("ha_begin"), tb.Rows(0)("ha_ende")) Then
+        If HausapothekeAktuell(von, bis) Then
             Return True
         Else
             Return False
