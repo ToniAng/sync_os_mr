@@ -57,6 +57,7 @@ Public Class sync
         ErwachsenenImpfung = 11
         FA_Impfungen = 12
 
+        GrippeImpfung65Plus = 14
     End Enum
     Public Enum AktionslogKat
         Allgemein = 0
@@ -616,7 +617,11 @@ Public Class sync
         Dim Satz As String = "0"
         Dim hsatz As New HASatz
 
-        If vacc.prog = settings.Grippeimpfung65Plus_Impfstoff And vacc.bhnr = NO_VAL Then
+        'Console.WriteLine("vacc.prog: " & vacc.prog)
+        'Console.WriteLine("vacc.bhnr: " & vacc.bhnr)
+
+
+        If vacc.prog = Programme.GrippeImpfung65Plus And vacc.bhnr = NO_VAL Then
             Satz = settings.Grippeimpfung65Plus_Honorar.ToString.Replace(",", ".")
             RsnNobilling = "NULL"
             bRsnNobilling = "0"
@@ -820,7 +825,12 @@ Public Class sync
 
     Private Function IsMobilerDienstIMpfling(heftnr As Integer) As Boolean
         Dim db_con As New cls_db_con
-        Dim tb As DataTable = db_con.GetRecordSet("select betreuendestelle from frauen where heftnrf=" & heftnr)
+
+        Dim strSQL As String = "select betreuendestelle from ghdaten..frauen where heftnrf=" & heftnr
+
+        Console.WriteLine("IsMobilerDienstIMpfling: " & strSQL)
+
+        Dim tb As DataTable = db_con.GetRecordSet("select betreuendestelle from ghdaten..frauen where heftnrf=" & heftnr)
 
         If tb.Rows.Count > 0 Then
             If IsDBNull(tb.Rows(0)(0)) Then Return False
