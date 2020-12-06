@@ -724,7 +724,18 @@ Public Class sync
                          ")"
 
 
-            db_con.FireSQL(strSQL, trans)
+            Try
+                db_con.FireSQL(strSQL, trans)
+
+            Catch ex As Exception
+                If Not ex.Message.IndexOf("PRIMARY KEY", 0) > 0 Then
+                    Throw New Exception(ex.Message)
+                Else
+                    AktionsLog("Duplkat Impfung wurde übergangen: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
+                    Console.WriteLine("Duplkat Impfung wurde übergangen.")
+                End If
+            End Try
+
 
         Else
                 Dim s As String() = vacc.plid.Split("|")
