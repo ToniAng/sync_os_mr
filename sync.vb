@@ -625,7 +625,7 @@ Public Class sync
             Satz = settings.Grippeimpfung65Plus_Honorar.ToString.Replace(",", ".")
             RsnNobilling = "NULL"
             bRsnNobilling = "0"
-            hsatz = GetHASätze(vacc.arztnr, vacc.heftnr, vacc.prog)
+            hsatz = GetHASätze(vacc.arztnr, vacc.heftnr, vacc.prog, trans)
         End If
 
 
@@ -793,13 +793,13 @@ Public Class sync
     End Function
 
 
-    Private Function GetHASätze(Arztnr As Integer, Hefrtnr As Integer, prog As Integer) As HASatz
-        Dim db_con As New cls_db_con
+    Private Function GetHASätze(Arztnr As Integer, Hefrtnr As Integer, prog As Integer, trans As SqlClient.SqlTransaction) As HASatz
+
         Dim hs As New HASatz
         Dim settings As New Einstellungen
-        If IsDOCHausapotheker(Arztnr) Then
-            If IsMobilerDienstIMpfling(Hefrtnr) Then
-                If Not HAKontingentVerbraucht(Arztnr, prog) Then
+        If IsDOCHausapotheker(Arztnr, trans) Then
+            If IsMobilerDienstIMpfling(Hefrtnr, trans) Then
+                If Not HAKontingentVerbraucht(Arztnr, prog, trans) Then
                     hs.satz = settings.Grippeimpfung65Plus_HASatz
                     hs.mwst = settings.Grippeimpfung65Plus_HAMwst
                 End If
@@ -812,12 +812,12 @@ Public Class sync
     End Function
 
 
-    Private Function HAKontingentVerbraucht(Arztnr As Integer, Prog As Integer) As Boolean
+    Private Function HAKontingentVerbraucht(Arztnr As Integer, Prog As Integer, trans As SqlClient.SqlTransaction) As Boolean
         Dim db_con As New cls_db_con
         Dim kontingent As Integer = 0
         Dim verbraucht As Integer = 0
-        Dim tb_kontinget As DataTable = db_con.GetRecordSet("select sum(anzahl) from gi65p_einleselog where apotheke=" & Arztnr & " and prog=" & Prog)
-        Dim tb_verbraucht As DataTable = db_con.GetRecordSet("select count(*) from impfdoku where arztnr=" & Arztnr & " and prog=" & Prog)
+        Dim tb_kontinget As DataTable = db_con.GetRecordSet("select sum(anzahl) from gi65p_einleselog where apotheke=" & Arztnr & " and prog=" & Prog, trans)
+        Dim tb_verbraucht As DataTable = db_con.GetRecordSet("select count(*) from impfdoku where arztnr=" & Arztnr & " and prog=" & Prog, trans)
 
 
         If Not IsDBNull(tb_kontinget.Rows(0)(0)) Then kontingent = tb_kontinget.Rows(0)(0)
@@ -834,14 +834,14 @@ Public Class sync
 
     End Function
 
-    Private Function IsMobilerDienstIMpfling(heftnr As Integer) As Boolean
+    Private Function IsMobilerDienstIMpfling(heftnr As Integer, trans As SqlClient.SqlTransaction) As Boolean
         Dim db_con As New cls_db_con
 
         Dim strSQL As String = "select betreuendestelle from ghdaten..frauen where heftnrf=" & heftnr
 
         Console.WriteLine("IsMobilerDienstIMpfling: " & strSQL)
 
-        Dim tb As DataTable = db_con.GetRecordSet("select betreuendestelle from ghdaten..frauen where heftnrf=" & heftnr)
+        Dim tb As DataTable = db_con.GetRecordSet("select betreuendestelle from ghdaten..frauen where heftnrf=" & heftnr, trans)
 
         If tb.Rows.Count > 0 Then
             If IsDBNull(tb.Rows(0)(0)) Then Return False
@@ -891,10 +891,10 @@ Public Class sync
 
     End Function
 
-    Private Function IsDOCHausapotheker(arztnr As Integer) As Boolean
+    Private Function IsDOCHausapotheker(arztnr As Integer, trans As SqlClient.SqlTransaction) As Boolean
         Dim db_con As New cls_db_con
 
-        Dim tb As DataTable = db_con.GetRecordSet("select ha_begin, ha_ende from aerzteliste where arztnr=" & arztnr)
+        Dim tb As DataTable = db_con.GetRecordSet("select ha_begin, ha_ende from aerzteliste where arztnr=" & arztnr, trans)
         Dim von As String = ""
         Dim bis As String = ""
         If Not IsDBNull(tb.Rows(0)("ha_begin")) Then von = tb.Rows(0)("ha_begin")
