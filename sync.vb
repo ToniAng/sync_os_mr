@@ -58,6 +58,7 @@ Public Class sync
         FA_Impfungen = 12
 
         GrippeImpfung65Plus = 14
+        GrippeimpfungPädagogInnen = 15
     End Enum
     Public Enum AktionslogKat
         Allgemein = 0
@@ -797,6 +798,11 @@ Public Class sync
 
         Dim hs As New HASatz
         Dim settings As New Einstellungen
+
+        If prog = Programme.GrippeimpfungPädagogInnen Then Return hs
+
+
+
         If IsDOCHausapotheker(Arztnr, trans) Then
             If IsMobilerDienstIMpfling(Hefrtnr, trans) Then
                 If Not HAKontingentVerbraucht(Arztnr, prog, trans) Then
