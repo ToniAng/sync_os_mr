@@ -2034,6 +2034,7 @@ Public Class Idata
 
     Public Property del As Integer = 0
     Public Property wegpauschale As Boolean = False
+    Public Property ha As Boolean = False
 
 
 End Class
