@@ -161,7 +161,7 @@ Public Class sync
 
 
         x.Send("sync_os-mr@vorsorgemedizin.st",
-                Setting.EMail,
+               Email,
                Subject,
                Msg)
 
@@ -613,22 +613,48 @@ Public Class sync
             BHNR = vacc.bhnr
         End If
 
+
+
+        'Console.WriteLine("vacc.prog: " & vacc.prog)
+        'Console.WriteLine("vacc.bhnr: " & vacc.bhnr)
+
+        'Honorar, Wegpauschale
+        '**************************
+
         Dim RsnNobilling As String = "'BH-Impfung, Online'"
         Dim bRsnNobilling As String = "-1"
         Dim Satz As String = "0"
         Dim hsatz As New HASatz
 
-        'Console.WriteLine("vacc.prog: " & vacc.prog)
-        'Console.WriteLine("vacc.bhnr: " & vacc.bhnr)
+        Dim wp As Integer = 0
+        Dim wp_satz As String = "0"
+        Dim wp_mwst As String = "0"
 
 
-        If vacc.prog = Programme.GrippeImpfung65Plus And vacc.bhnr = NO_VAL Then
-            Satz = settings.Grippeimpfung65Plus_Honorar.ToString.Replace(",", ".")
+
+
+
+
+
+        If vacc.bhnr = NO_VAL Then 'NGL
+
+
+
+            Satz = GetImpfhonorar(vacc.prog)
             RsnNobilling = "NULL"
             bRsnNobilling = "0"
-            hsatz = GetHASätze(vacc.arztnr, vacc.heftnr, vacc.prog, trans)
+            hsatz = GetHASätze(vacc.arztnr, vacc.heftnr, vacc.prog, vacc.ha, trans)
+
+            If vacc.wegpauschale Then
+                wp = 1
+                wp_satz = settings.Grippeimpfung65Plus_Wegpauschale.ToString.Replace(",", ".")
+                wp_mwst = settings.Grippeimpfung65Plus_Wegpauschale_Mwst.ToString.Replace(",", ".")
+            End If
+
         End If
 
+        'Honorar, Wegpauschale - Ende
+        '**************************
 
 
         Dim standort = "NULL"
@@ -659,17 +685,6 @@ Public Class sync
 
         'If Not Einstellungen.IsTestEnvironment Then
 
-        Dim wp As Integer = 0
-        Dim wp_satz As String = "0"
-        Dim wp_mwst As String = "0"
-
-
-
-        If vacc.wegpauschale Then
-            wp = 1
-            wp_satz = settings.Grippeimpfung65Plus_Wegpauschale.ToString.Replace(",", ".")
-            wp_mwst = settings.Grippeimpfung65Plus_Wegpauschale_Mwst.ToString.Replace(",", ".")
-        End If
 
 
 
@@ -729,11 +744,14 @@ Public Class sync
                 db_con.FireSQL(strSQL, trans)
 
             Catch ex As Exception
+
+
                 If Not ex.Message.IndexOf("PRIMARY KEY", 0) > 0 Then
-                    Throw New Exception(ex.Message)
+                    Throw New Exception(ex.Message & vbNewLine & ex.StackTrace)
                 Else
                     AktionsLog("Duplkat Impfung wurde übergangen: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
-                    Console.WriteLine("Duplkat Impfung wurde übergangen.")
+                    Console.WriteLine("Duplikat Impfung wurde übergangen.")
+                    Return bc
                 End If
             End Try
 
@@ -741,11 +759,11 @@ Public Class sync
         Else
                 Dim s As String() = vacc.plid.Split("|")
 
-                If vacc.del <> 0 Then
-                    strSQL = "delete ghdaten..impfdoku where datum='" & s(0) & "' and boncode=" & s(1)
-                    db_con.FireSQL(strSQL, trans)
-                    AktionsLog("Impfung wurde gelöscht: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
-                Else
+            If vacc.del <> 0 Then
+                strSQL = "delete ghdaten..impfdoku where datum='" & s(0) & "' and boncode=" & s(1)
+                db_con.FireSQL(strSQL, trans)
+                AktionsLog("Impfung wurde gelöscht: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
+            Else
                 strSQL = "update ghdaten..impfdoku set " &
                         "datum='" & CDate(vacc.datum).ToShortDateString & "'," &
                         "nname='" & pat.nn & "'," &
@@ -772,15 +790,18 @@ Public Class sync
                         "standortid=" & standortid & " " &
                         "where datum='" & s(0) & "' and boncode=" & bc
 
+
+
+
+
+
                 db_con.FireSQL(strSQL, trans)
+                AktionsLog("Impfung wurde verändert: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
 
-
-                    AktionsLog("Impfung wurde verändert: " & strSQL, AktionslogKat.Integration_BH_Impfungen, trans)
-
-
-                End If
 
             End If
+
+        End If
 
 
 
@@ -794,25 +815,46 @@ Public Class sync
     End Function
 
 
-    Private Function GetHASätze(Arztnr As Integer, Hefrtnr As Integer, prog As Integer, trans As SqlClient.SqlTransaction) As HASatz
+    Private Function GetImpfhonorar(prog As Integer) As Single
+        Dim settings As New Einstellungen
+
+        Select Case CType(prog, Programme)
+            Case Programme.Schulimpfungen, Programme.Magistratsimpfungen, Programme.FA_Impfungen
+                Return 0
+            Case Programme.GrippeImpfung65Plus, Programme.GrippeimpfungPädagogInnen
+                Return settings.Grippeimpfung65Plus_Honorar.ToString.Replace(",", ".")
+            Case Else
+                Throw New Exception("GetImpfhonorar: Programm " & prog & " nicht behandelt")
+        End Select
+
+
+
+    End Function
+
+
+    Private Function GetHASätze(Arztnr As Integer, Hefrtnr As Integer, prog As Integer, ha As Boolean, trans As SqlClient.SqlTransaction) As HASatz
 
         Dim hs As New HASatz
         Dim settings As New Einstellungen
 
-        If prog = Programme.GrippeimpfungPädagogInnen Then Return hs
 
+        Select Case CType(prog, Programme)
+            Case Programme.Schulimpfungen, Programme.FA_Impfungen, Programme.Magistratsimpfungen
+                Return hs
+            Case Programme.GrippeimpfungPädagogInnen
+                Return hs
+            Case Else
+                If ha Then
+                    If IsDOCHausapotheker(Arztnr, trans) Then
+                        hs.satz = settings.HASatz
+                        hs.mwst = settings.HAMwst
+                    End If
 
-
-        If IsDOCHausapotheker(Arztnr, trans) Then
-            If IsMobilerDienstIMpfling(Hefrtnr, trans) Then
-                If Not HAKontingentVerbraucht(Arztnr, prog, trans) Then
-                    hs.satz = settings.Grippeimpfung65Plus_HASatz
-                    hs.mwst = settings.Grippeimpfung65Plus_HAMwst
                 End If
-            End If
-        End If
+                Return hs
 
-        Return hs
+
+        End Select
 
 
     End Function
@@ -929,6 +971,7 @@ Public Class sync
     Private Function GetCurPat(vacc As Idata, Optional trans As SqlClient.SqlTransaction = Nothing) As OSImpfling
 
 
+        Console.WriteLine("GetCurPat: Heftnr " & vacc.heftnr)
 
         Dim db_con As New cls_db_con
 
@@ -945,6 +988,12 @@ Public Class sync
         If tb.Rows.Count = 0 Then
             tb = db_con.GetRecordSet("select anrede, nname nachname, vname vorname, gb_tm gebdat, heftnr heftnrf, strasse,plz,ort, svnrkind svnrdata, k_gbdatum gbdatum from frauen, eeinh where frauen.svnr_id=eeinh.svnr_id and heftnr=" & vacc.heftnr, trans)
         End If
+        If tb.Rows.Count = 0 Then
+            Throw New Exception("SCHWERES PROBLEM: Online wurde eine Impfung auf Heft " & vacc.heftnr & " gebucht. DIESE HEFTNUMMER GIBT ES NICHT MEHR!")
+            Return Nothing
+        End If
+
+
 
 
         Dim r As DataRow = tb.Rows(0)
@@ -1871,6 +1920,19 @@ Public Class sync
         End Get
 
     End Property
+
+
+    Private ReadOnly Property Email As String
+        Get
+            If IsTestEnvironment() Then
+                Return "office@atsoftware.at"
+            Else
+                Return Setting.EMail
+            End If
+        End Get
+    End Property
+
+
 
     Private Function IsTestEnvironment() As Boolean
 

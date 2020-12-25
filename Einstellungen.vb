@@ -450,7 +450,7 @@ Public Class Einstellungen
     End Property
 
 
-    Public Property Grippeimpfung65Plus_HASatz() As Single
+    Public Property HASatz() As Single
         Get
             Try
                 System.Threading.Monitor.Enter(Me)
@@ -473,7 +473,7 @@ Public Class Einstellungen
             SetProp("Grippeimpfung65Plus_HASatz", Value)
         End Set
     End Property
-    Public Property Grippeimpfung65Plus_HAMwst() As Single
+    Public Property HAMwst() As Single
         Get
             Try
                 System.Threading.Monitor.Enter(Me)
