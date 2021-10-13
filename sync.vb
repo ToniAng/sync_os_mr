@@ -35,6 +35,22 @@ Public Class sync
     Private Const MD_TRÄGER_ID_MIN As Integer = 1000
 
 
+    Private m_GH() As typHonsatz
+    Private m_GHAkt As Short
+
+    Public Structure typHonsatz
+        Dim Impfhonorar As Decimal
+        Dim mwst As Double
+        Dim Hapohon As Decimal
+        Dim hapomwst As Double
+        Dim von As Date
+        Dim bis As Date
+    End Structure
+    Public Enum Honorierungsmodus
+        Automatisch = 0
+        NichtHonorieren = 1
+        Honorieren = 2
+    End Enum
     Private Enum DS_Typ
         Impfung = 0
         Impfling = 1
@@ -125,6 +141,186 @@ Public Class sync
 
 
     End Sub
+
+    Public Function GetHon(ByVal arztnr As Integer,
+                                ByRef intNoBilling As Short,
+                                ByRef RsnNoBilling As String,
+                                ByVal boolMissing As Boolean,
+                                ByVal ImpfDat As Date,
+                                ByRef Impfhonorar As Decimal,
+                                ByRef mwst As Double,
+                                ByRef Hapohon As Decimal,
+                                ByRef hapomwst As Double,
+                                ByRef Erzwingen As Honorierungsmodus,
+                                Optional ByVal trans As SqlClient.SqlTransaction = Nothing,
+                                Optional Ha_Ja As Boolean = False) As Boolean
+
+
+        Dim rsGetHon As DataTable
+        Dim HonGes As Double
+        GetHon = True
+
+        Dim db_con As New cls_db_con
+
+
+
+        If Not arztnr = 0 Then
+
+
+            If Erzwingen = Honorierungsmodus.NichtHonorieren Then
+                Impfhonorar = 0
+                mwst = 0
+                Hapohon = 0
+                hapomwst = 0
+                Return True
+
+            End If
+
+            If (intNoBilling <> 0 Or boolMissing) And Erzwingen <> Honorierungsmodus.Honorieren Then
+                Impfhonorar = 0
+                mwst = 0
+                Hapohon = 0
+                hapomwst = 0
+                Return True
+            End If
+
+            rsGetHon = db_con.GetRecordSet("select GB, gruppe, nomwst, nettopauschalierer, apotheke, ghdaten.dbo.hausapotheke(ha_begin,ha_ende) hausapotheke, ha_begin,ha_ende from aerzteliste  with (nolock) where arztnr=" & arztnr, trans)
+
+            'If rsGetHon.Rows(0)("GB") <> -1 And Not (rsGetHon.Rows(0)("gruppe") = "Amtsarzt" Or rsGetHon.Rows(0)("gruppe") = "Institution" Or rsGetHon.Rows(0)("gruppe") = "BH") Then
+            '    'MsgBox("Registrierung des Impfbons ist nicht möglich, da die Impfstelle die Geschäftsbedingungen nicht bestätigt hat.", MsgBoxStyle.Critical, APP_NAME)
+            '    GetHon = False
+            '    GoTo exit_gethon
+            'End If
+
+
+            If Not GetHonsatz(ImpfDat, trans) Then
+                Return False
+
+            End If
+
+            HonGes = m_GH(m_GHAkt).Impfhonorar
+
+            Dim ha_begin As String = ""
+            Dim ha_ende As String = ""
+            If Not IsDBNull(rsGetHon.Rows(0)("ha_begin")) Then ha_begin = rsGetHon.Rows(0)("ha_begin")
+            If Not IsDBNull(rsGetHon.Rows(0)("ha_ende")) Then ha_ende = rsGetHon.Rows(0)("ha_ende")
+
+
+            If Ha_Ja Then
+                If IsDOCHausapotheker(arztnr, trans) Then
+                    Hapohon = m_GH(m_GHAkt).Hapohon
+                    hapomwst = m_GH(m_GHAkt).hapomwst
+                Else
+                    Hapohon = 0
+                    hapomwst = 0
+                End If
+
+            Else
+                    Hapohon = 0
+                hapomwst = 0
+            End If
+
+
+            If rsGetHon.Rows(0)("nomwst") And Not rsGetHon.Rows(0)("nettopauschalierer") Then
+                Impfhonorar = HonGes * (1 + m_GH(m_GHAkt).mwst)
+            Else
+                Impfhonorar = HonGes
+            End If
+
+
+            If rsGetHon.Rows(0)("nomwst") Then
+                mwst = 0
+            Else
+                mwst = m_GH(m_GHAkt).mwst
+            End If
+
+
+            'If rsGetHon.Rows(0)("gruppe") = "Hebamme" Then
+            '    MsgBox("Für die Gruppe der Hebammen kann keine Impfung registriert werden.", MsgBoxStyle.Critical, APP_NAME)
+            '    Return False
+            '    GoTo exit_gethon
+            'End If
+            'If rsGetHon.Rows(0)("gruppe") = "Amtsarzt" Or rsGetHon.Rows(0)("gruppe") = "Hebamme" Or rsGetHon.Rows(0)("gruppe") = "Institution" Or rsGetHon.Rows(0)("gruppe") = "BH" Then
+            '    Impfhonorar = 0
+            '    mwst = 0
+            '    Hapohon = 0
+            '    hapomwst = 0
+            '    intNoBilling = CShort("-1")
+            '    RsnNoBilling = "Gruppe »" & rsGetHon.Rows(0)("gruppe") & "« wird nicht verrechnet"
+            'End If
+
+
+
+
+
+            If Erzwingen <> Honorierungsmodus.Honorieren Then
+                If Date.Compare(DateAdd(Microsoft.VisualBasic.DateInterval.Year, Setting.IMPF_TIMEOUT_REL, ImpfDat), Today) < 0 Then
+                    Impfhonorar = 0
+                    mwst = 0
+                    Hapohon = 0
+                    hapomwst = 0
+                    intNoBilling = CShort("-1")
+                    RsnNoBilling = "Impfung älter als " & Setting.IMPF_TIMEOUT_REL & " Jahr(e) bei Eingang"
+                    Exit Function
+                End If
+
+
+            End If
+
+
+        End If
+
+        Return True
+
+
+    End Function
+
+
+
+
+    Private Function GetHonsatz(ByRef datum As Date, Optional ByVal trans As SqlClient.SqlTransaction = Nothing) As Boolean
+        Dim rs As DataTable
+        Dim i, imax As Short
+
+        Dim db_con As New cls_db_con
+
+        Static GotHon As Boolean
+        m_GHAkt = -1
+        If Not GotHon Then
+            rs = db_con.GetRecordSet("select * from honsatz with (nolock) order by von desc", trans)
+            For Each r As DataRow In rs.Rows
+                ReDim Preserve m_GH(i + 1)
+                m_GH(i).Impfhonorar = r("Impfhonorar")
+                m_GH(i).mwst = r("mwst")
+                m_GH(i).Hapohon = r("Hapohon")
+                m_GH(i).hapomwst = r("hapohonmwst")
+                m_GH(i).von = r("von")
+                m_GH(i).bis = r("bis")
+                'If i > 4 Then Exit Do
+                i = i + 1
+
+            Next
+            GotHon = True
+        End If
+        On Error Resume Next
+        imax = UBound(m_GH)
+        If Err.Number = 0 Then
+            For i = 0 To imax - 1
+                If Date.Compare(datum, m_GH(i).bis) <= 0 And Date.Compare(datum, m_GH(i).von) >= 0 Then m_GHAkt = i : Exit For
+            Next
+        End If
+        Err.Clear()
+
+        If m_GHAkt = -1 Then
+            Throw New Exception("Für diese Impfung ist kein Honorarsatz konfiguriert.")
+
+            Return False
+        End If
+
+
+        Return True
+
+    End Function
 
     Private Function GetPersistentID(tmp_dsid As Integer, dstyp As DS_Typ, Optional trans As SqlClient.SqlTransaction = Nothing) As Integer
 
@@ -638,18 +834,48 @@ Public Class sync
 
         If vacc.bhnr = NO_VAL Then 'NGL
 
-
-
-            Satz = GetImpfhonorar(vacc.prog)
             RsnNobilling = "NULL"
             bRsnNobilling = "0"
-            hsatz = GetHASätze(vacc.arztnr, vacc.heftnr, vacc.prog, vacc.ha, trans)
 
-            If vacc.wegpauschale Then
-                wp = 1
-                wp_satz = settings.Grippeimpfung65Plus_Wegpauschale.ToString.Replace(",", ".")
-                wp_mwst = settings.Grippeimpfung65Plus_Wegpauschale_Mwst.ToString.Replace(",", ".")
+
+
+            If vacc.prog = Programme.Impfnetzwerk Then
+
+
+
+
+                Dim HS As typHonsatz
+
+                If Not GetHon(vacc.arztnr, bRsnNobilling, RsnNobilling, False, vacc.datum,
+                                HS.Impfhonorar, HS.mwst, HS.Hapohon, HS.hapomwst, (Honorierungsmodus.Automatisch), trans,
+                                vacc.ha) Then
+
+                    Throw New Exception("Homnorierung Influenza-Bon für Heft-Nr " & vacc.heftnr & " nicht möglich")
+
+                End If
+                Satz = HS.Impfhonorar
+
+
+
+                hsatz.satz = HS.Hapohon
+                hsatz.mwst = HS.hapomwst
+
+
+            Else
+                Satz = GetImpfhonorar(vacc.prog)
+
+                hsatz = GetHASätze(vacc.arztnr, vacc.heftnr, vacc.prog, vacc.ha, trans)
+
+                If vacc.wegpauschale Then
+                    wp = 1
+                    wp_satz = settings.Grippeimpfung65Plus_Wegpauschale.ToString.Replace(",", ".")
+                    wp_mwst = settings.Grippeimpfung65Plus_Wegpauschale_Mwst.ToString.Replace(",", ".")
+                End If
             End If
+
+
+
+
 
         End If
 
@@ -819,6 +1045,13 @@ Public Class sync
         Dim settings As New Einstellungen
 
         Select Case CType(prog, Programme)
+            Case Programme.Impfnetzwerk
+
+
+
+
+
+
             Case Programme.Schulimpfungen, Programme.Magistratsimpfungen, Programme.FA_Impfungen
                 Return 0
             Case Programme.GrippeImpfung65Plus, Programme.GrippeimpfungPädagogInnen
@@ -832,6 +1065,9 @@ Public Class sync
     End Function
 
 
+
+
+
     Private Function GetHASätze(Arztnr As Integer, Hefrtnr As Integer, prog As Integer, ha As Boolean, trans As SqlClient.SqlTransaction) As HASatz
 
         Dim hs As New HASatz
@@ -839,6 +1075,9 @@ Public Class sync
 
 
         Select Case CType(prog, Programme)
+            Case Programme.Impfnetzwerk
+                Throw New Exception("Keine Behandlung für Impfaktion 2")
+
             Case Programme.Schulimpfungen, Programme.FA_Impfungen, Programme.Magistratsimpfungen
                 Return hs
             Case Programme.GrippeimpfungPädagogInnen
