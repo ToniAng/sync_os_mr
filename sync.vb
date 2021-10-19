@@ -394,7 +394,6 @@ Public Class sync
 
 
 
-
             trans = con.BeginTransaction()
 
             If osv.aa IsNot Nothing Then
@@ -862,10 +861,11 @@ Public Class sync
 
 
             Else
+                If vacc.prog = Programme.GrippeImpfung65Plus Then vacc.wegpauschale = False
+
                 Satz = GetImpfhonorar(vacc.prog)
 
                 hsatz = GetHASätze(vacc.arztnr, vacc.heftnr, vacc.prog, vacc.ha, trans)
-
                 If vacc.wegpauschale Then
                     wp = 1
                     wp_satz = settings.Grippeimpfung65Plus_Wegpauschale.ToString.Replace(",", ".")
@@ -1048,7 +1048,7 @@ Public Class sync
             Case Programme.Impfnetzwerk
 
 
-
+                Throw New Exception("GetImpfhonorar für Prorgamm Impfnetzwerk nicht vorhanden")
 
 
 
@@ -1260,8 +1260,18 @@ Public Class sync
         Dim NewHeftnr As Integer
         Dim tb As DataTable
 
+        If Date.Today.Year - CDate(pat.gebdat).Year < 25 And
+            Not String.IsNullOrEmpty(pat.refpers_gebdat) Then
+
+            Return SetDatenbLattData(pat, trans)
+
+
+        End If
+
+
         If pat.KindUpdateMöglich Then
             UpdateKI(pat, trans)
+
             Return pat.heftnr
         End If
 
@@ -1401,6 +1411,33 @@ Public Class sync
 
 
     End Function
+
+    Private Function SetDatenbLattData(pat As OSImpfling, Optional trans As SqlClient.SqlTransaction = Nothing) As Integer
+        Dim db_con As New cls_db_con
+
+        Dim svnr_id As Integer = SetEltern(pat, trans)
+
+        If svnr_id = NO_VAL Then
+            Throw New Exception("Unerwartetes Ergebnis bei SetDatenbLattData")
+            Return 0
+        End If
+
+
+
+        Dim tb As DataTable = db_con.GetRecordSet("select svnr_id from eeinh where heftnr=" & pat.heftnr, trans)
+
+        If tb.Rows.Count = 0 Then
+            InsertKI(pat, svnr_id, trans)
+        Else
+            UpdateKI(pat, trans, False)
+
+        End If
+
+        Return NO_VAL
+
+
+    End Function
+
 
     Private Function Search_SVN_Kind(svn As String, Optional trans As SqlClient.SqlTransaction = Nothing) As DataTable
         Dim db_con As New cls_db_con
@@ -1556,13 +1593,13 @@ Public Class sync
 
     End Sub
 
-    Private Sub UpdateKI(pat As OSImpfling, Optional trans As SqlClient.SqlTransaction = Nothing)
+    Private Sub UpdateKI(pat As OSImpfling, Optional trans As SqlClient.SqlTransaction = Nothing, Optional DoSetEltern As Boolean = True)
 
         Dim db_con As New cls_db_con
         Dim hasSVN As Boolean = IIf(String.IsNullOrEmpty(pat.svn), False, True)
 
 
-        UpdateEltern(pat, trans)
+        If DoSetEltern Then SetEltern(pat, trans)
 
         Dim svnrdata As String = "NULL"
         Dim gebdat As String = "NULL"
@@ -1599,6 +1636,51 @@ Public Class sync
 
     End Sub
 
+
+    Private Sub InsertKI(pat As OSImpfling, svnr_id As Integer, Optional trans As SqlClient.SqlTransaction = Nothing)
+
+        Dim db_con As New cls_db_con
+        Dim hasSVN As Boolean = IIf(String.IsNullOrEmpty(pat.svn), False, True)
+
+
+
+
+        Dim svnrdata As String = "NULL"
+        Dim gebdat As String = "NULL"
+
+        If hasSVN Then
+            svnrdata = "'" & pat.svn.Substring(0, 4) & "'"
+            gebdat = "'" & pat.svn.Substring(4, 6) & "'"
+        End If
+
+
+
+        Dim sql As String = "insert into eeinh (" &
+            "svnr_id, heftnr,HEFTAUS,karzt " &
+            "nname,vname,gb_tm," &
+            "SVNRKIND,k_gbdatum," &
+            "KSVA,sex,geandert,geandertam) values (" &
+            svnr_id & "," & pat.heftnr & "," & pat.arztnr & "," & pat.arztnr & "," &
+            "'" & pat.nn & "'," &
+            "'" & pat.vn & "'," &
+            "'" & pat.gebdat & "'," &
+            svnrdata & "," &
+            gebdat & "," &
+            "KSVA=8," &
+            IIf(pat.sex = "w", 1, 0) & "," &
+            "'OS_" & pat.username & "'," &
+            "'" & Date.Now & "') "
+
+
+
+
+
+        db_con.FireSQL(sql, trans)
+
+
+        AktionsLog("Insert Impfling: " & sql, AktionslogKat.Integration_BH_Impfungen, trans)
+
+    End Sub
 
     'Private Sub InsertKI(pat As OSImpfling, heftnr As Integer, SVNRID As Integer, Optional trans As SqlClient.SqlTransaction = Nothing)
 
@@ -1660,31 +1742,108 @@ Public Class sync
 
 
 
-    Private Sub UpdateEltern(pat As OSImpfling, Optional trans As SqlClient.SqlTransaction = Nothing)
+    Private Function SetEltern(pat As OSImpfling, Optional trans As SqlClient.SqlTransaction = Nothing) As Integer
+
+        If String.IsNullOrEmpty(pat.refpers_gebdat) Then Return NO_VAL
 
 
-
+        Dim svnr_id As Integer = NO_VAL
+        Dim typAction As String
         Dim db_con As New cls_db_con
-        Dim tb As DataTable = db_con.GetRecordSet("select svnr_id from eeinh where heftnr=" & pat.heftnr)
+        Dim tb As DataTable = db_con.GetRecordSet("select svnr_id from eeinh where heftnr=" & pat.heftnr, trans)
+        If tb.Rows.Count > 0 Then svnr_id = tb.Rows(0)("svnr_id")
 
+        Dim titel As String = If(String.IsNullOrEmpty(pat.refpers_titel), "NULL", "'" & pat.refpers_titel & "'")
+        Dim ng_titel As String = If(String.IsNullOrEmpty(pat.refpers_ngtitel), "NULL", "'" & pat.refpers_ngtitel & "'")
+        Dim sex As Integer = If(pat.sex = "m", 0, 1)
+        Dim tel As String = If(String.IsNullOrEmpty(pat.refpers_email), "NULL", "'" & pat.refpers_email & "'")
+        Dim email As String = If(String.IsNullOrEmpty(pat.refpers_email), "NULL", "'" & pat.refpers_email & "'")
+
+        Dim SVNRDATA As String = "NULL"
+        Dim GBDATUM As String = "NULL"
+
+        If Not String.IsNullOrEmpty(pat.refpers_svn) Then
+            SVNRDATA = "'" & pat.refpers_svn.Substring(0, 4) & "'"
+            GBDATUM = "'" & pat.refpers_svn.Substring(4) & "'"
+            If svnr_id = NO_VAL Then
+
+                tb = db_con.GetRecordSet("select svnr_id from frauen where svnrdata=" & SVNRDATA & " and gbdatum=" & GBDATUM, trans)
+                If tb.Rows.Count > 0 Then svnr_id = tb.Rows(0)("svnr_id")
+
+            End If
+        End If
+
+        Dim geandertam As String = Date.Now
+        Dim geandert As String = "OS_" & pat.username
+
+        Dim sql As String
 
         Dim ic As New ImportGeocodierung(pat.strasse, pat.plz, pat.ort)
-        Dim sql As String = "update frauen set " &
+        If svnr_id <> NO_VAL Then
+            typAction = "Update"
+            sql = "update frauen Set " &
+                       "nachname='" & pat.refpers_nn & "'," &
+                       "vorname='" & pat.refpers_vn & "'," &
+                       "gebdat='" & pat.refpers_gebdat & "'," &
+                       "titel=" & titel & "," &
+                       "titel_suffix=" & ng_titel & "," &
+                       "SVNRDATA=" & SVNRDATA & "," &
+                       "GBDATUM=" & GBDATUM & "," &
+                       "tel=" & tel & "," &
+                       "email=" & email & "," &
                        "strasse='" & pat.strasse & " " & pat.hnr & "'," &
+                       "anrede=" & sex & "," &
                        "plz=" & pat.plz & "," &
                        "ort='" & pat.ort & "'," &
-                       "geandert='OS_" & pat.username & "'," &
-                       "geandertam='" & Date.Now & "', " &
-                       "AlterAddress='" & Date.Now & "', " &
+                       "geandert='" & geandert & "'," &
+                       "geandertam='" & geandertam & "', " &
+                       "AlterAddress='" & geandertam & "', " &
                        ic.UpdateSQLmitGKZ &
                         "where svnr_id=" & tb.Rows(0)("svnr_id")
+        Else
+            typAction = "Insert"
+            sql = "insert into frauen (nachname,vorname,gebdat,titel,titel_suffix," &
+                "svnrdata,gbdatum,tel,email," &
+                "strasse,anrede,plz,ort," &
+                "geandert,geandertam,AlterAddress," &
+                "breitengrad,laengengrad,GeocodeLevel,gemeindeid) values (" &
+                        "'" & pat.refpers_nn & "'," &
+                       "'" & pat.refpers_vn & "'," &
+                       "'" & pat.refpers_gebdat & "'," &
+                       titel & "," &
+                       ng_titel & "," &
+                       SVNRDATA & "," &
+                       GBDATUM & "," &
+                       tel & "," &
+                       email & "," &
+                       "'" & pat.strasse & " " & pat.hnr & "'," &
+                       sex & "," &
+                       pat.plz & "," &
+                       pat.ort & "'," &
+                       "'" & geandert & " '," &
+                       "'" & geandertam & "', " &
+                       "'" & geandertam & "', " &
+                       ic.InsertSQLMitGKZ &
+                       ")"
+
+
+
+        End If
 
         db_con.FireSQL(sql, trans)
-        AktionsLog("Update Eltern Impfling: " & sql, AktionslogKat.Integration_BH_Impfungen, trans)
+
+        If svnr_id = NO_VAL Then
+            tb = db_con.GetRecordSet("select svnr_id from frauen where geandert='" & geandert & "' and geandertam='" & geandertam & "' and gebdat='" & pat.refpers_gebdat & "'", trans)
+            svnr_id = tb.Rows(0)("svnr_id")
+        End If
+
+        AktionsLog(typAction & " Eltern Impfling: " & sql, AktionslogKat.Integration_BH_Impfungen, trans)
 
 
 
-    End Sub
+        Return svnr_id
+
+    End Function
 
     Private Function HeftnrVergeben(heftnr As Integer, Optional trans As SqlClient.SqlTransaction = Nothing) As Boolean
         Dim db_con As New cls_db_con
@@ -2307,6 +2466,12 @@ Public Class OSImpfling
     Public Property refpers_vnr1 As String
     Public Property refpers_vnr2 As String
     Public Property refpers_gebdat As String
+
+    Public Property refpers_svn As String
+    Public Property refpers_tel As String
+    Public Property refpers_email As String
+
+    Public Property arztnr As Integer
 
 
     Public Property KindUpdateMöglich As Boolean = False
