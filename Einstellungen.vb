@@ -1421,6 +1421,41 @@ Public Class Einstellungen
         End Set
     End Property
 
+    Public Property SMTP_USER() As String
+        Get
+            If Not Isloaded Then LoadConfig()
+            d.RowFilter = "param='SMTP_USER'"
+            If d.Count > 0 Then
+                Return d(0)(1).ToString
+            Else
+
+                Return ""
+            End If
+        End Get
+        Set(ByVal Value As String)
+            SetProp("SMTP_USER", CStr(Value))
+        End Set
+    End Property
+
+
+    Public Property SMTP_PW() As String
+        Get
+            If Not Isloaded Then LoadConfig()
+            d.RowFilter = "param='SMTP_PW'"
+            If d.Count > 0 Then
+                Return d(0)(1).ToString
+            Else
+
+                Return ""
+            End If
+        End Get
+        Set(ByVal Value As String)
+            SetProp("SMTP_PW", CStr(Value))
+        End Set
+    End Property
+
+
+
     Public ReadOnly Property Schuljahr_Aktuell() As Integer
         Get
 

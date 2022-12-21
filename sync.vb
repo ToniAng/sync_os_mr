@@ -351,7 +351,7 @@ Public Class sync
 
 
         x.Host = Setting.SMTP_SERVER_ALTERNATIV
-
+        x.Credentials = New System.Net.NetworkCredential(Setting.SMTP_USER, Setting.SMTP_PW)
 
 
 
@@ -849,7 +849,7 @@ Public Class sync
                                 HS.Impfhonorar, HS.mwst, HS.Hapohon, HS.hapomwst, (Honorierungsmodus.Automatisch), trans,
                                 vacc.ha) Then
 
-                    Throw New Exception("Homnorierung Influenza-Bon für Heft-Nr " & vacc.heftnr & " nicht möglich")
+                    Throw New Exception("Honorierung Influenza-Bon für Heft-Nr " & vacc.heftnr & " nicht möglich")
 
                 End If
                 Satz = HS.Impfhonorar
@@ -1222,6 +1222,7 @@ Public Class sync
             Return Nothing
         End If
 
+        vacc.heftnr = GetCurrentGH(vacc.heftnr)
 
         Dim tb As DataTable = db_con.GetRecordSet("select * from frauen where heftnrf=" & vacc.heftnr, trans)
         If tb.Rows.Count = 0 Then
@@ -1252,6 +1253,19 @@ Public Class sync
 
 
         Return p
+
+    End Function
+
+    Public Function GetCurrentGH(ByVal HeftNr As Integer, Optional ByVal trans As SqlClient.SqlTransaction = Nothing) As Integer
+        Dim db_con As New cls_db_con
+        Dim rs As DataTable = db_con.GetRecordSet("Select heftnrneu from heftumleitung with (nolock) where heftnr=" & HeftNr, trans)
+        If rs.Rows.Count = 0 Then
+            Return HeftNr
+
+        Else
+
+            Return CInt(rs.Rows(0)("heftnrneu"))
+        End If
 
     End Function
 
