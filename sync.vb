@@ -186,11 +186,7 @@ Public Class sync
 
             rsGetHon = db_con.GetRecordSet("select GB, gruppe, nomwst, nettopauschalierer, apotheke, ghdaten.dbo.hausapotheke(ha_begin,ha_ende) hausapotheke, ha_begin,ha_ende from aerzteliste  with (nolock) where arztnr=" & arztnr, trans)
 
-            'If rsGetHon.Rows(0)("GB") <> -1 And Not (rsGetHon.Rows(0)("gruppe") = "Amtsarzt" Or rsGetHon.Rows(0)("gruppe") = "Institution" Or rsGetHon.Rows(0)("gruppe") = "BH") Then
-            '    'MsgBox("Registrierung des Impfbons ist nicht möglich, da die Impfstelle die Geschäftsbedingungen nicht bestätigt hat.", MsgBoxStyle.Critical, APP_NAME)
-            '    GetHon = False
-            '    GoTo exit_gethon
-            'End If
+
 
 
             If Not GetHonsatz(ImpfDat, trans) Then
@@ -235,19 +231,7 @@ Public Class sync
             End If
 
 
-            'If rsGetHon.Rows(0)("gruppe") = "Hebamme" Then
-            '    MsgBox("Für die Gruppe der Hebammen kann keine Impfung registriert werden.", MsgBoxStyle.Critical, APP_NAME)
-            '    Return False
-            '    GoTo exit_gethon
-            'End If
-            'If rsGetHon.Rows(0)("gruppe") = "Amtsarzt" Or rsGetHon.Rows(0)("gruppe") = "Hebamme" Or rsGetHon.Rows(0)("gruppe") = "Institution" Or rsGetHon.Rows(0)("gruppe") = "BH" Then
-            '    Impfhonorar = 0
-            '    mwst = 0
-            '    Hapohon = 0
-            '    hapomwst = 0
-            '    intNoBilling = CShort("-1")
-            '    RsnNoBilling = "Gruppe »" & rsGetHon.Rows(0)("gruppe") & "« wird nicht verrechnet"
-            'End If
+
 
 
 
@@ -2125,11 +2109,17 @@ Public Class sync
 
 
     Public ToDoList As New System.Text.StringBuilder
+
+    Public Sub New()
+        ServicePointManager.ServerCertificateValidationCallback = Function(sender, certificate, chain, sslPolicyErrors) True
+
+    End Sub
+
     Private Function GetInstitut(blz As Integer) As String
         Try
             Dim db_con As New cls_db_con
             Dim rstmp As DataTable
-            rstmp = db_con.GetRecordset("select institut from blz with (nolock) where blz=" & blz)
+            rstmp = db_con.GetRecordSet("select institut from blz with (nolock) where blz=" & blz)
             If rstmp.Rows.Count > 0 Then
 
                 Return rstmp.Rows(0)("Institut")
@@ -2165,6 +2155,9 @@ Public Class sync
 
             ServicePointManager.Expect100Continue = True
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12
+
+
+
 
             WebRequest = CType(Net.WebRequest.Create(TargetAddr), HttpWebRequest) 'CType(WebRequest.Create(TargetAddr), HttpWebRequest)
             WebRequest.Timeout = 10000
